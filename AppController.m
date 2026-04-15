@@ -13,6 +13,7 @@
 - (void)buildWindow;
 - (void)performSearchInBackground:(NSString*)query;
 - (void)searchDidFinish:(NSArray*)newResults;
+- (int)rowIndexForVideoId:(NSString*)videoId;
 @end
 
 @implementation AppController
@@ -64,18 +65,22 @@
 }
 
 - (void)buildWindow {
-    NSRect frame = NSMakeRect(120, 120, 700, 500);
     unsigned int style = NSTitledWindowMask
                        | NSClosableWindowMask
                        | NSMiniaturizableWindowMask
                        | NSResizableWindowMask;
 
-    window = [[NSWindow alloc] initWithContentRect:frame
+    /* Create with a placeholder content rect, then resize the outer frame
+     * to the screen's visibleFrame (screen bounds minus menu bar & Dock).
+     * Going through setFrame: keeps the title bar under the menu bar
+     * instead of hidden behind it. */
+    window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100)
                                          styleMask:style
                                            backing:NSBackingStoreBuffered
                                              defer:NO];
+    [window setFrame:[[NSScreen mainScreen] visibleFrame] display:NO];
     [window setTitle:@"TigerTube"];
-    [window setMinSize:NSMakeSize(420, 260)];
+    [window setMinSize:NSMakeSize(700, 400)];
     [window setReleasedWhenClosed:NO];
 
     NSView* content = [window contentView];
@@ -114,16 +119,16 @@
     [tv setAllowsColumnResizing:YES];
     [tv setAllowsColumnReordering:YES];
     [tv setAllowsMultipleSelection:NO];
-    /* 120x90 default thumbnails scale proportionally to ~48x36 in a
-     * 48px-wide column; 40px row leaves a 2px gap top/bottom. */
-    [tv setRowHeight:40.0f];
+    /* 320x180 medium thumbnails displayed at 1:1; 184px row leaves a
+     * 2px gap top/bottom. */
+    [tv setRowHeight:184.0f];
 
-    /* Thumbnail column -- image cell, fixed width. */
+    /* Thumbnail column -- image cell, fixed 320px to match native. */
     NSTableColumn* thumbCol = [[NSTableColumn alloc] initWithIdentifier:@"thumb"];
     [[thumbCol headerCell] setStringValue:@""];
-    [thumbCol setWidth:50.0f];
-    [thumbCol setMinWidth:50.0f];
-    [thumbCol setMaxWidth:50.0f];
+    [thumbCol setWidth:320.0f];
+    [thumbCol setMinWidth:320.0f];
+    [thumbCol setMaxWidth:320.0f];
     NSImageCell* imageCell = [[NSImageCell alloc] init];
     [imageCell setImageScaling:NSScaleProportionally];
     [imageCell setImageFrameStyle:NSImageFrameNone];
@@ -270,13 +275,29 @@
     return @"";
 }
 
+- (int)rowIndexForVideoId:(NSString*)videoId {
+    NSUInteger n = [results count];
+    NSUInteger i;
+    for (i = 0; i < n; i++) {
+        NSDictionary* row = [results objectAtIndex:i];
+        if ([[row objectForKey:@"videoId"] isEqualToString:videoId]) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
 #pragma mark - ThumbnailCacheDelegate
 
 - (void)thumbnailCache:(ThumbnailCache*)cache
     didLoadImageForVideoId:(NSString*)videoId
 {
-    /* Tiny table -- full reload is cheaper than scanning for the row. */
-    [tableView reloadData];
+    /* Redraw just the affected row -- full reloadData stutters
+     * while many thumbs are streaming in. */
+    int row = [self rowIndexForVideoId:videoId];
+    if (row >= 0) {
+        [tableView setNeedsDisplayInRect:[tableView rectOfRow:row]];
+    }
 }
 
 @end

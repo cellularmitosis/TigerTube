@@ -159,13 +159,13 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
         NSString* channel = [snippet objectForKey:@"channelTitle"];
         if (vid == nil || title == nil || channel == nil) continue;
 
-        /* snippet.thumbnails.default.url -- 120x90 JPEG, ~5KB */
+        /* snippet.thumbnails.medium.url -- 320x180 JPEG, ~10-15KB */
         NSString* thumbURL = nil;
         NSDictionary* thumbs = [snippet objectForKey:@"thumbnails"];
         if ([thumbs isKindOfClass:[NSDictionary class]]) {
-            NSDictionary* defThumb = [thumbs objectForKey:@"default"];
-            if ([defThumb isKindOfClass:[NSDictionary class]]) {
-                thumbURL = [defThumb objectForKey:@"url"];
+            NSDictionary* medThumb = [thumbs objectForKey:@"medium"];
+            if ([medThumb isKindOfClass:[NSDictionary class]]) {
+                thumbURL = [medThumb objectForKey:@"url"];
             }
         }
 
