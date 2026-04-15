@@ -6,13 +6,12 @@
 #import <Cocoa/Cocoa.h>
 #import "AppController.h"
 
-int main(int argc, char *argv[])
-{
-    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+int main(int argc, char* argv[]) {
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
 
     [NSApplication sharedApplication];
 
-    AppController *controller = [[AppController alloc] init];
+    AppController* controller = [[AppController alloc] init];
     [NSApp setDelegate:controller];
 
     /* Load MainMenu.nib for the default menu bar only.  All window/view

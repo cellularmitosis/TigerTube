@@ -8,17 +8,16 @@
 
 @implementation NSString (TigerTube)
 
-- (NSString *)htmlDecoded
-{
+- (NSString*)htmlDecoded {
     NSUInteger len = [self length];
     if (len == 0) {
         return self;
     }
 
-    unichar *buf = (unichar *)malloc(sizeof(unichar) * len);
+    unichar* buf = (unichar*)malloc(sizeof(unichar) * len);
     [self getCharacters:buf range:NSMakeRange(0, len)];
 
-    NSMutableString *out = [NSMutableString stringWithCapacity:len];
+    NSMutableString* out = [NSMutableString stringWithCapacity:len];
     NSUInteger i = 0;
     while (i < len) {
         unichar c = buf[i];
@@ -39,7 +38,7 @@
             continue;
         }
 
-        NSString *entity = [[[NSString alloc] initWithCharacters:buf + i + 1
+        NSString* entity = [[[NSString alloc] initWithCharacters:buf + i + 1
                                                           length:end - i - 1]
                             autorelease];
         unichar replacement = 0;
@@ -54,7 +53,7 @@
         } else if ([entity isEqualToString:@"apos"]) {
             replacement = '\'';
         } else if ([entity length] > 1 && [entity characterAtIndex:0] == '#') {
-            NSString *num = [entity substringFromIndex:1];
+            NSString* num = [entity substringFromIndex:1];
             int value = 0;
             if ([num length] > 1 &&
                 ([num characterAtIndex:0] == 'x' || [num characterAtIndex:0] == 'X'))
@@ -82,14 +81,15 @@
     return out;
 }
 
-- (NSString *)iso8601DurationDisplay
-{
+- (NSString*)iso8601DurationDisplay {
     if ([self length] < 3 || ![self hasPrefix:@"PT"]) {
         return self;
     }
 
-    const char *s = [self UTF8String];
-    int hours = 0, minutes = 0, seconds = 0;
+    const char* s = [self UTF8String];
+    int hours = 0;
+    int minutes = 0;
+    int seconds = 0;
     int current = 0;
     int i;
     for (i = 2; s[i] != '\0'; i++) {

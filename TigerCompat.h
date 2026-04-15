@@ -9,14 +9,14 @@
 
 // NSInteger, NSUInteger and CGFloat didn't exist on Tiger/10.4.
 
-typedef int         NSInteger;
-#define NSIntegerMax    INT_MAX
-#define NSIntegerMin    INT_MIN
+typedef int NSInteger;
+#define NSIntegerMax INT_MAX
+#define NSIntegerMin INT_MIN
 
 typedef unsigned int NSUInteger;
-#define NSUIntegerMax   UINT_MAX
+#define NSUIntegerMax UINT_MAX
 
-typedef float       CGFloat;
+typedef float CGFloat;
 #define CGFLOAT_MIN FLT_MIN
 #define CGFLOAT_MAX FLT_MAX
 

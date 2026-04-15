@@ -14,13 +14,13 @@
 #include <curl/curl.h>
 
 @interface YTClient : NSObject {
-    NSString *apiKey;
-    NSString *caBundlePath;
-    CURL *curl;
+    NSString* apiKey;
+    NSString* caBundlePath;
+    CURL* curl;
 }
 
 // caPath must point to a PEM CA bundle (e.g. the bundled cacert.pem).
-- (id)initWithAPIKey:(NSString *)key caBundlePath:(NSString *)caPath;
+- (id)initWithAPIKey:(NSString*)key caBundlePath:(NSString*)caPath;
 
 // Returns an NSArray of NSDictionary.  Each dict has:
 //   videoId       NSString
@@ -28,7 +28,7 @@
 //   channelTitle  NSString
 //   duration      NSString (ISO 8601, e.g. "PT3M45S") -- may be absent
 // Returns nil on error.  Prints per-phase timing to stderr.
-- (NSArray *)searchVideos:(NSString *)query maxResults:(int)maxResults;
+- (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults;
 
 @end
 

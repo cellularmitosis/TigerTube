@@ -11,15 +11,14 @@
 
 /* Growable buffer for libcurl's write callback. */
 struct YTBuffer {
-    char *data;
+    char* data;
     size_t size;
 };
 
-static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userdata)
-{
+static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userdata) {
     size_t realsize = size * nmemb;
-    struct YTBuffer *buf = (struct YTBuffer *)userdata;
-    char *newdata = (char *)realloc(buf->data, buf->size + realsize + 1);
+    struct YTBuffer* buf = (struct YTBuffer*)userdata;
+    char* newdata = (char*)realloc(buf->data, buf->size + realsize + 1);
     if (newdata == NULL) {
         return 0;
     }
@@ -31,14 +30,13 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
 }
 
 @interface YTClient (Private)
-- (NSString *)urlEncode:(NSString *)s;
-- (NSString *)httpGet:(NSString *)url bytes:(size_t *)outBytes;
+- (NSString*)urlEncode:(NSString*)s;
+- (NSString*)httpGet:(NSString*)url bytes:(size_t*)outBytes;
 @end
 
 @implementation YTClient
 
-- (id)initWithAPIKey:(NSString *)key caBundlePath:(NSString *)caPath
-{
+- (id)initWithAPIKey:(NSString*)key caBundlePath:(NSString*)caPath {
     self = [super init];
     if (self != nil) {
         apiKey = [key retain];
@@ -57,8 +55,7 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
     return self;
 }
 
-- (void)dealloc
-{
+- (void)dealloc {
     if (curl != NULL) {
         curl_easy_cleanup(curl);
         curl = NULL;
@@ -68,27 +65,25 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
     [super dealloc];
 }
 
-- (NSString *)urlEncode:(NSString *)s
-{
-    const char *utf = [s UTF8String];
-    char *esc = curl_easy_escape(curl, utf, 0);
+- (NSString*)urlEncode:(NSString*)s {
+    const char* utf = [s UTF8String];
+    char* esc = curl_easy_escape(curl, utf, 0);
     if (esc == NULL) {
         return s;
     }
-    NSString *result = [NSString stringWithUTF8String:esc];
+    NSString* result = [NSString stringWithUTF8String:esc];
     curl_free(esc);
     return result;
 }
 
-- (NSString *)httpGet:(NSString *)url bytes:(size_t *)outBytes
-{
+- (NSString*)httpGet:(NSString*)url bytes:(size_t*)outBytes {
     struct YTBuffer buf;
-    buf.data = (char *)malloc(1);
+    buf.data = (char*)malloc(1);
     buf.size = 0;
     buf.data[0] = '\0';
 
     curl_easy_setopt(curl, CURLOPT_URL, [url UTF8String]);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buf);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&buf);
 
     CURLcode res = curl_easy_perform(curl);
     long httpCode = 0;
@@ -110,24 +105,23 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
         *outBytes = buf.size;
     }
 
-    NSString *body = [[[NSString alloc] initWithBytes:buf.data
+    NSString* body = [[[NSString alloc] initWithBytes:buf.data
                                                 length:buf.size
                                               encoding:NSUTF8StringEncoding] autorelease];
     free(buf.data);
     return body;
 }
 
-- (NSArray *)searchVideos:(NSString *)query maxResults:(int)maxResults
-{
-    NSString *encoded = [self urlEncode:query];
-    NSString *searchURL = [NSString stringWithFormat:
+- (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults {
+    NSString* encoded = [self urlEncode:query];
+    NSString* searchURL = [NSString stringWithFormat:
         @"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=%d&q=%@&key=%@",
         maxResults, encoded, apiKey];
 
     /* --- /search: fetch --- */
     size_t searchBytes = 0;
-    NSDate *t0 = [NSDate date];
-    NSString *searchBody = [self httpGet:searchURL bytes:&searchBytes];
+    NSDate* t0 = [NSDate date];
+    NSString* searchBody = [self httpGet:searchURL bytes:&searchBytes];
     NSTimeInterval dtFetch = -[t0 timeIntervalSinceNow];
     fprintf(stderr, "[search]  fetch: %6.2fs  %6lu bytes\n",
             dtFetch, (unsigned long)searchBytes);
@@ -136,7 +130,7 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
     }
 
     /* --- /search: parse --- */
-    NSDate *t1 = [NSDate date];
+    NSDate* t1 = [NSDate date];
     id parsed = [searchBody JSONValue];
     NSTimeInterval dtParse = -[t1 timeIntervalSinceNow];
     fprintf(stderr, "[search]  parse: %6.2fs\n", dtParse);
@@ -145,27 +139,27 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
         fprintf(stderr, "YTClient: search response was not a dict\n");
         return nil;
     }
-    NSArray *items = [(NSDictionary *)parsed objectForKey:@"items"];
+    NSArray* items = [(NSDictionary*)parsed objectForKey:@"items"];
     if (![items isKindOfClass:[NSArray class]]) {
         fprintf(stderr, "YTClient: search response had no items array\n");
         return nil;
     }
 
-    NSMutableArray *results = [NSMutableArray arrayWithCapacity:[items count]];
-    NSMutableArray *videoIds = [NSMutableArray arrayWithCapacity:[items count]];
-    NSEnumerator *itemEnum = [items objectEnumerator];
-    NSDictionary *item;
+    NSMutableArray* results = [NSMutableArray arrayWithCapacity:[items count]];
+    NSMutableArray* videoIds = [NSMutableArray arrayWithCapacity:[items count]];
+    NSEnumerator* itemEnum = [items objectEnumerator];
+    NSDictionary* item;
     while ((item = [itemEnum nextObject]) != nil) {
-        NSDictionary *idDict = [item objectForKey:@"id"];
-        NSDictionary *snippet = [item objectForKey:@"snippet"];
+        NSDictionary* idDict = [item objectForKey:@"id"];
+        NSDictionary* snippet = [item objectForKey:@"snippet"];
         if (![idDict isKindOfClass:[NSDictionary class]]) continue;
         if (![snippet isKindOfClass:[NSDictionary class]]) continue;
-        NSString *vid = [idDict objectForKey:@"videoId"];
-        NSString *title = [snippet objectForKey:@"title"];
-        NSString *channel = [snippet objectForKey:@"channelTitle"];
+        NSString* vid = [idDict objectForKey:@"videoId"];
+        NSString* title = [snippet objectForKey:@"title"];
+        NSString* channel = [snippet objectForKey:@"channelTitle"];
         if (vid == nil || title == nil || channel == nil) continue;
 
-        NSMutableDictionary *row = [NSMutableDictionary dictionary];
+        NSMutableDictionary* row = [NSMutableDictionary dictionary];
         [row setObject:vid forKey:@"videoId"];
         [row setObject:title forKey:@"title"];
         [row setObject:channel forKey:@"channelTitle"];
@@ -178,14 +172,14 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
     }
 
     /* --- /videos: fetch durations for all ids in one call --- */
-    NSString *idsCSV = [videoIds componentsJoinedByString:@","];
-    NSString *videosURL = [NSString stringWithFormat:
+    NSString* idsCSV = [videoIds componentsJoinedByString:@","];
+    NSString* videosURL = [NSString stringWithFormat:
         @"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=%@&key=%@",
         idsCSV, apiKey];
 
     size_t videosBytes = 0;
-    NSDate *t2 = [NSDate date];
-    NSString *videosBody = [self httpGet:videosURL bytes:&videosBytes];
+    NSDate* t2 = [NSDate date];
+    NSString* videosBody = [self httpGet:videosURL bytes:&videosBytes];
     NSTimeInterval dtVFetch = -[t2 timeIntervalSinceNow];
     fprintf(stderr, "[videos]  fetch: %6.2fs  %6lu bytes\n",
             dtVFetch, (unsigned long)videosBytes);
@@ -193,7 +187,7 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
         return results;
     }
 
-    NSDate *t3 = [NSDate date];
+    NSDate* t3 = [NSDate date];
     id videosParsed = [videosBody JSONValue];
     NSTimeInterval dtVParse = -[t3 timeIntervalSinceNow];
     fprintf(stderr, "[videos]  parse: %6.2fs\n", dtVParse);
@@ -201,29 +195,29 @@ static size_t YTWriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
     if (![videosParsed isKindOfClass:[NSDictionary class]]) {
         return results;
     }
-    NSArray *videoItems = [(NSDictionary *)videosParsed objectForKey:@"items"];
+    NSArray* videoItems = [(NSDictionary*)videosParsed objectForKey:@"items"];
     if (![videoItems isKindOfClass:[NSArray class]]) {
         return results;
     }
 
-    NSMutableDictionary *durations = [NSMutableDictionary dictionary];
-    NSEnumerator *vitemEnum = [videoItems objectEnumerator];
-    NSDictionary *vitem;
+    NSMutableDictionary* durations = [NSMutableDictionary dictionary];
+    NSEnumerator* vitemEnum = [videoItems objectEnumerator];
+    NSDictionary* vitem;
     while ((vitem = [vitemEnum nextObject]) != nil) {
-        NSString *vid = [vitem objectForKey:@"id"];
-        NSDictionary *details = [vitem objectForKey:@"contentDetails"];
+        NSString* vid = [vitem objectForKey:@"id"];
+        NSDictionary* details = [vitem objectForKey:@"contentDetails"];
         if (vid == nil || ![details isKindOfClass:[NSDictionary class]]) continue;
-        NSString *duration = [details objectForKey:@"duration"];
+        NSString* duration = [details objectForKey:@"duration"];
         if (duration != nil) {
             [durations setObject:duration forKey:vid];
         }
     }
 
-    NSEnumerator *resultEnum = [results objectEnumerator];
-    NSMutableDictionary *row;
+    NSEnumerator* resultEnum = [results objectEnumerator];
+    NSMutableDictionary* row;
     while ((row = [resultEnum nextObject]) != nil) {
-        NSString *vid = [row objectForKey:@"videoId"];
-        NSString *duration = [durations objectForKey:vid];
+        NSString* vid = [row objectForKey:@"videoId"];
+        NSString* duration = [durations objectForKey:vid];
         if (duration != nil) {
             [row setObject:duration forKey:@"duration"];
         }
