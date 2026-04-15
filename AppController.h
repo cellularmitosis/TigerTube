@@ -11,15 +11,17 @@
 
 #import <Cocoa/Cocoa.h>
 #import "TigerCompat.h"
+#import "ThumbnailCache.h"
 
 @class YTClient;
 
-@interface AppController : NSObject {
-    YTClient* client;           /* strong */
-    NSMutableArray* results;    /* strong, array of NSMutableDictionary */
-    NSWindow* window;           /* strong */
-    NSSearchField* searchField; /* weak (retained by view hierarchy) */
-    NSTableView* tableView;     /* weak (retained by NSScrollView) */
+@interface AppController : NSObject <ThumbnailCacheDelegate> {
+    YTClient* client;             /* strong */
+    ThumbnailCache* thumbCache;   /* strong */
+    NSMutableArray* results;      /* strong, array of NSMutableDictionary */
+    NSWindow* window;             /* strong */
+    NSSearchField* searchField;   /* weak (retained by view hierarchy) */
+    NSTableView* tableView;       /* weak (retained by NSScrollView) */
     BOOL searching;
 }
 

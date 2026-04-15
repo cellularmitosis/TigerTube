@@ -28,6 +28,7 @@
 
 - (void)dealloc {
     [client release];
+    [thumbCache release];
     [results release];
     [window release];
     [super dealloc];
@@ -50,6 +51,14 @@
         [NSApp terminate:nil];
         return;
     }
+
+    thumbCache = [[ThumbnailCache alloc] initWithCABundlePath:caPath];
+    if (thumbCache == nil) {
+        fprintf(stderr, "FATAL: ThumbnailCache init failed\n");
+        [NSApp terminate:nil];
+        return;
+    }
+    [thumbCache setDelegate:self];
 
     [self buildWindow];
 }
@@ -105,7 +114,23 @@
     [tv setAllowsColumnResizing:YES];
     [tv setAllowsColumnReordering:YES];
     [tv setAllowsMultipleSelection:NO];
-    [tv setRowHeight:20.0f];
+    /* 120x90 default thumbnails scale proportionally to ~48x36 in a
+     * 48px-wide column; 40px row leaves a 2px gap top/bottom. */
+    [tv setRowHeight:40.0f];
+
+    /* Thumbnail column -- image cell, fixed width. */
+    NSTableColumn* thumbCol = [[NSTableColumn alloc] initWithIdentifier:@"thumb"];
+    [[thumbCol headerCell] setStringValue:@""];
+    [thumbCol setWidth:50.0f];
+    [thumbCol setMinWidth:50.0f];
+    [thumbCol setMaxWidth:50.0f];
+    NSImageCell* imageCell = [[NSImageCell alloc] init];
+    [imageCell setImageScaling:NSScaleProportionally];
+    [imageCell setImageFrameStyle:NSImageFrameNone];
+    [thumbCol setDataCell:imageCell];
+    [imageCell release];
+    [tv addTableColumn:thumbCol];
+    [thumbCol release];
 
     NSTableColumn* durCol = [[NSTableColumn alloc] initWithIdentifier:@"duration"];
     [[durCol headerCell] setStringValue:@"Length"];
@@ -222,6 +247,14 @@
     }
     NSDictionary* item = [results objectAtIndex:row];
     NSString* ident = [col identifier];
+    if ([ident isEqualToString:@"thumb"]) {
+        /* Lazy load: asking the cache kicks off a fetch if it's not
+         * already cached.  Returns nil (blank cell) until the delegate
+         * callback fires and we reload. */
+        NSString* vid = [item objectForKey:@"videoId"];
+        NSString* url = [item objectForKey:@"thumbnailURL"];
+        return [thumbCache imageForVideoId:vid url:url];
+    }
     if ([ident isEqualToString:@"duration"]) {
         NSString* d = [item objectForKey:@"duration"];
         return d != nil ? d : @"";
@@ -235,6 +268,15 @@
         return c != nil ? c : @"";
     }
     return @"";
+}
+
+#pragma mark - ThumbnailCacheDelegate
+
+- (void)thumbnailCache:(ThumbnailCache*)cache
+    didLoadImageForVideoId:(NSString*)videoId
+{
+    /* Tiny table -- full reload is cheaper than scanning for the row. */
+    [tableView reloadData];
 }
 
 @end
