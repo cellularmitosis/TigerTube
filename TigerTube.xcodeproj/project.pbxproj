@@ -1,0 +1,366 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 42;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2B4C490A2F840001000001AA /* libssl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C490B2F840001000001AA /* libssl.a */; };
+		2B4C490C2F840001000001AA /* libcrypto.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C490D2F840001000001AA /* libcrypto.a */; };
+		2B4C49032F840001000001AA /* libcurl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C49022F840001000001AA /* libcurl.a */; };
+		2B4C49052F840001000001AA /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = 2B4C49042F840001000001AA /* cacert.pem */; };
+		2B4C481D2F8324CD00B5DE08 /* NSObject+SBJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C48122F8324CD00B5DE08 /* NSObject+SBJSON.m */; };
+		2B4C481E2F8324CD00B5DE08 /* NSString+SBJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C48142F8324CD00B5DE08 /* NSString+SBJSON.m */; };
+		2B4C481F2F8324CD00B5DE08 /* SBJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C48162F8324CD00B5DE08 /* SBJSON.m */; };
+		2B4C48202F8324CD00B5DE08 /* SBJsonBase.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C48182F8324CD00B5DE08 /* SBJsonBase.m */; };
+		2B4C48212F8324CD00B5DE08 /* SBJsonParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C481A2F8324CD00B5DE08 /* SBJsonParser.m */; };
+		2B4C48222F8324CD00B5DE08 /* SBJsonWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C481C2F8324CD00B5DE08 /* SBJsonWriter.m */; };
+		8D11072A0486CEB800E47090 /* MainMenu.nib in Resources */ = {isa = PBXBuildFile; fileRef = 29B97318FDCFA39411CA2CEA /* MainMenu.nib */; };
+		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
+		8D11072D0486CEB800E47090 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 29B97316FDCFA39411CA2CEA /* main.m */; settings = {ATTRIBUTES = (); }; };
+		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		089C165DFE840E0CC02AAC07 /* English */ = {isa = PBXFileReference; fileEncoding = 10; lastKnownFileType = text.plist.strings; name = English; path = English.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
+		13E42FB307B3F0F600E4EEF1 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = /System/Library/Frameworks/CoreData.framework; sourceTree = "<absolute>"; };
+		29B97316FDCFA39411CA2CEA /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		29B97319FDCFA39411CA2CEA /* English */ = {isa = PBXFileReference; lastKnownFileType = wrapper.nib; name = English; path = English.lproj/MainMenu.nib; sourceTree = "<group>"; };
+		29B97324FDCFA39411CA2CEA /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
+		29B97325FDCFA39411CA2CEA /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = /System/Library/Frameworks/Foundation.framework; sourceTree = "<absolute>"; };
+		2B4C48102F8324CD00B5DE08 /* JSON.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = JSON.h; sourceTree = "<group>"; };
+		2B4C48112F8324CD00B5DE08 /* NSObject+SBJSON.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = "NSObject+SBJSON.h"; sourceTree = "<group>"; };
+		2B4C48122F8324CD00B5DE08 /* NSObject+SBJSON.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = "NSObject+SBJSON.m"; sourceTree = "<group>"; };
+		2B4C48132F8324CD00B5DE08 /* NSString+SBJSON.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = "NSString+SBJSON.h"; sourceTree = "<group>"; };
+		2B4C48142F8324CD00B5DE08 /* NSString+SBJSON.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = "NSString+SBJSON.m"; sourceTree = "<group>"; };
+		2B4C48152F8324CD00B5DE08 /* SBJSON.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = SBJSON.h; sourceTree = "<group>"; };
+		2B4C48162F8324CD00B5DE08 /* SBJSON.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = SBJSON.m; sourceTree = "<group>"; };
+		2B4C48172F8324CD00B5DE08 /* SBJsonBase.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = SBJsonBase.h; sourceTree = "<group>"; };
+		2B4C48182F8324CD00B5DE08 /* SBJsonBase.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = SBJsonBase.m; sourceTree = "<group>"; };
+		2B4C48192F8324CD00B5DE08 /* SBJsonParser.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = SBJsonParser.h; sourceTree = "<group>"; };
+		2B4C481A2F8324CD00B5DE08 /* SBJsonParser.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = SBJsonParser.m; sourceTree = "<group>"; };
+		2B4C481B2F8324CD00B5DE08 /* SBJsonWriter.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = SBJsonWriter.h; sourceTree = "<group>"; };
+		2B4C481C2F8324CD00B5DE08 /* SBJsonWriter.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = SBJsonWriter.m; sourceTree = "<group>"; };
+		2B4C48272F83283100B5DE08 /* TigerCompat.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = TigerCompat.h; sourceTree = "<group>"; };
+		32CA4F630368D1EE00C91783 /* TigerTube_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TigerTube_Prefix.pch; sourceTree = "<group>"; };
+		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8D1107320486CEB800E47090 /* TigerTube.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TigerTube.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B4C490B2F840001000001AA /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = libs/openssl/libssl.a; sourceTree = "<group>"; };
+		2B4C490D2F840001000001AA /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = libs/openssl/libcrypto.a; sourceTree = "<group>"; };
+		2B4C49022F840001000001AA /* libcurl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcurl.a; path = libs/curl/libcurl.a; sourceTree = "<group>"; };
+		2B4C49042F840001000001AA /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = libs/cacert/cacert.pem; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8D11072E0486CEB800E47090 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */,
+				2B4C49032F840001000001AA /* libcurl.a in Frameworks */,
+				2B4C490A2F840001000001AA /* libssl.a in Frameworks */,
+				2B4C490C2F840001000001AA /* libcrypto.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		080E96DDFE201D6D7F000001 /* Classes */ = {
+			isa = PBXGroup;
+			children = (
+				2B4C480F2F8324CD00B5DE08 /* SBJson-2.2.3 */,
+			);
+			name = Classes;
+			sourceTree = "<group>";
+		};
+		1058C7A0FEA54F0111CA2CBB /* Linked Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */,
+			);
+			name = "Linked Frameworks";
+			sourceTree = "<group>";
+		};
+		1058C7A2FEA54F0111CA2CBB /* Other Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				29B97324FDCFA39411CA2CEA /* AppKit.framework */,
+				13E42FB307B3F0F600E4EEF1 /* CoreData.framework */,
+				29B97325FDCFA39411CA2CEA /* Foundation.framework */,
+			);
+			name = "Other Frameworks";
+			sourceTree = "<group>";
+		};
+		19C28FACFE9D520D11CA2CBB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8D1107320486CEB800E47090 /* TigerTube.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		29B97314FDCFA39411CA2CEA /* TigerTube */ = {
+			isa = PBXGroup;
+			children = (
+				080E96DDFE201D6D7F000001 /* Classes */,
+				29B97315FDCFA39411CA2CEA /* Other Sources */,
+				29B97317FDCFA39411CA2CEA /* Resources */,
+				29B97323FDCFA39411CA2CEA /* Frameworks */,
+				2B4C49062F840001000001AA /* libs */,
+				19C28FACFE9D520D11CA2CBB /* Products */,
+			);
+			name = TigerTube;
+			sourceTree = "<group>";
+		};
+		2B4C49062F840001000001AA /* libs */ = {
+			isa = PBXGroup;
+			children = (
+				2B4C49022F840001000001AA /* libcurl.a */,
+				2B4C490B2F840001000001AA /* libssl.a */,
+				2B4C490D2F840001000001AA /* libcrypto.a */,
+				2B4C49042F840001000001AA /* cacert.pem */,
+			);
+			name = libs;
+			sourceTree = "<group>";
+		};
+		29B97315FDCFA39411CA2CEA /* Other Sources */ = {
+			isa = PBXGroup;
+			children = (
+				2B4C48272F83283100B5DE08 /* TigerCompat.h */,
+				32CA4F630368D1EE00C91783 /* TigerTube_Prefix.pch */,
+				29B97316FDCFA39411CA2CEA /* main.m */,
+			);
+			name = "Other Sources";
+			sourceTree = "<group>";
+		};
+		29B97317FDCFA39411CA2CEA /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8D1107310486CEB800E47090 /* Info.plist */,
+				089C165CFE840E0CC02AAC07 /* InfoPlist.strings */,
+				29B97318FDCFA39411CA2CEA /* MainMenu.nib */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
+		29B97323FDCFA39411CA2CEA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1058C7A0FEA54F0111CA2CBB /* Linked Frameworks */,
+				1058C7A2FEA54F0111CA2CBB /* Other Frameworks */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		2B4C480F2F8324CD00B5DE08 /* SBJson-2.2.3 */ = {
+			isa = PBXGroup;
+			children = (
+				2B4C48102F8324CD00B5DE08 /* JSON.h */,
+				2B4C48112F8324CD00B5DE08 /* NSObject+SBJSON.h */,
+				2B4C48122F8324CD00B5DE08 /* NSObject+SBJSON.m */,
+				2B4C48132F8324CD00B5DE08 /* NSString+SBJSON.h */,
+				2B4C48142F8324CD00B5DE08 /* NSString+SBJSON.m */,
+				2B4C48152F8324CD00B5DE08 /* SBJSON.h */,
+				2B4C48162F8324CD00B5DE08 /* SBJSON.m */,
+				2B4C48172F8324CD00B5DE08 /* SBJsonBase.h */,
+				2B4C48182F8324CD00B5DE08 /* SBJsonBase.m */,
+				2B4C48192F8324CD00B5DE08 /* SBJsonParser.h */,
+				2B4C481A2F8324CD00B5DE08 /* SBJsonParser.m */,
+				2B4C481B2F8324CD00B5DE08 /* SBJsonWriter.h */,
+				2B4C481C2F8324CD00B5DE08 /* SBJsonWriter.m */,
+			);
+			path = "SBJson-2.2.3";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8D1107260486CEB800E47090 /* TigerTube */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C01FCF4A08A954540054247B /* Build configuration list for PBXNativeTarget "TigerTube" */;
+			buildPhases = (
+				8D1107290486CEB800E47090 /* Resources */,
+				8D11072C0486CEB800E47090 /* Sources */,
+				8D11072E0486CEB800E47090 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TigerTube;
+			productInstallPath = "$(HOME)/Applications";
+			productName = TigerTube;
+			productReference = 8D1107320486CEB800E47090 /* TigerTube.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		29B97313FDCFA39411CA2CEA /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = C01FCF4E08A954540054247B /* Build configuration list for PBXProject "TigerTube" */;
+			hasScannedForEncodings = 1;
+			mainGroup = 29B97314FDCFA39411CA2CEA /* TigerTube */;
+			projectDirPath = "";
+			targets = (
+				8D1107260486CEB800E47090 /* TigerTube */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8D1107290486CEB800E47090 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D11072A0486CEB800E47090 /* MainMenu.nib in Resources */,
+				8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */,
+				2B4C49052F840001000001AA /* cacert.pem in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8D11072C0486CEB800E47090 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D11072D0486CEB800E47090 /* main.m in Sources */,
+				2B4C481D2F8324CD00B5DE08 /* NSObject+SBJSON.m in Sources */,
+				2B4C481E2F8324CD00B5DE08 /* NSString+SBJSON.m in Sources */,
+				2B4C481F2F8324CD00B5DE08 /* SBJSON.m in Sources */,
+				2B4C48202F8324CD00B5DE08 /* SBJsonBase.m in Sources */,
+				2B4C48212F8324CD00B5DE08 /* SBJsonParser.m in Sources */,
+				2B4C48222F8324CD00B5DE08 /* SBJsonWriter.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		089C165CFE840E0CC02AAC07 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				089C165DFE840E0CC02AAC07 /* English */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		29B97318FDCFA39411CA2CEA /* MainMenu.nib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				29B97319FDCFA39411CA2CEA /* English */,
+			);
+			name = MainMenu.nib;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		C01FCF4B08A954540054247B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = c99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
+				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/libs/curl/include",
+					"$(SRCROOT)/libs/openssl/include",
+				);
+				INFOPLIST_FILE = Info.plist;
+				INSTALL_PATH = "$(HOME)/Applications";
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/libs/curl",
+					"$(SRCROOT)/libs/openssl",
+				);
+				OTHER_LDFLAGS = (
+					"-Wl,-search_paths_first",
+					"-framework",
+					SystemConfiguration,
+				);
+				PRODUCT_NAME = TigerTube;
+				WRAPPER_EXTENSION = app;
+				ZERO_LINK = NO;
+			};
+			name = Debug;
+		};
+		C01FCF4C08A954540054247B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = ppc;
+				GCC_C_LANGUAGE_STANDARD = c99;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_MODEL_TUNING = G5;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/libs/curl/include",
+					"$(SRCROOT)/libs/openssl/include",
+				);
+				INFOPLIST_FILE = Info.plist;
+				INSTALL_PATH = "$(HOME)/Applications";
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/libs/curl",
+					"$(SRCROOT)/libs/openssl",
+				);
+				OTHER_LDFLAGS = (
+					"-Wl,-search_paths_first",
+					"-framework",
+					SystemConfiguration,
+				);
+				PRODUCT_NAME = TigerTube;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Release;
+		};
+		C01FCF4F08A954540054247B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				PREBINDING = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+			};
+			name = Debug;
+		};
+		C01FCF5008A954540054247B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				PREBINDING = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C01FCF4A08A954540054247B /* Build configuration list for PBXNativeTarget "TigerTube" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C01FCF4B08A954540054247B /* Debug */,
+				C01FCF4C08A954540054247B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C01FCF4E08A954540054247B /* Build configuration list for PBXProject "TigerTube" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C01FCF4F08A954540054247B /* Debug */,
+				C01FCF5008A954540054247B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 29B97313FDCFA39411CA2CEA /* Project object */;
+}

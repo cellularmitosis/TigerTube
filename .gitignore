@@ -1,0 +1,8 @@
+build/
+*.pbxuser
+*.mode1
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+.DS_Store
+Secrets.h
