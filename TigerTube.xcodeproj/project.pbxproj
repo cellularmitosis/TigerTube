@@ -17,6 +17,7 @@
 		2B4C48202F8324CD00B5DE08 /* SBJsonBase.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C48182F8324CD00B5DE08 /* SBJsonBase.m */; };
 		2B4C48212F8324CD00B5DE08 /* SBJsonParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C481A2F8324CD00B5DE08 /* SBJsonParser.m */; };
 		2B4C48222F8324CD00B5DE08 /* SBJsonWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C481C2F8324CD00B5DE08 /* SBJsonWriter.m */; };
+		2B4C4AA22F850000000001AA /* YTClient.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4AA12F850000000001AA /* YTClient.m */; };
 		8D11072A0486CEB800E47090 /* MainMenu.nib in Resources */ = {isa = PBXBuildFile; fileRef = 29B97318FDCFA39411CA2CEA /* MainMenu.nib */; };
 		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
 		8D11072D0486CEB800E47090 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 29B97316FDCFA39411CA2CEA /* main.m */; settings = {ATTRIBUTES = (); }; };
@@ -52,6 +53,9 @@
 		2B4C490D2F840001000001AA /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = libs/openssl/libcrypto.a; sourceTree = "<group>"; };
 		2B4C49022F840001000001AA /* libcurl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcurl.a; path = libs/curl/libcurl.a; sourceTree = "<group>"; };
 		2B4C49042F840001000001AA /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = libs/cacert/cacert.pem; sourceTree = "<group>"; };
+		2B4C4AA02F850000000001AA /* YTClient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = YTClient.h; sourceTree = "<group>"; };
+		2B4C4AA12F850000000001AA /* YTClient.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = YTClient.m; sourceTree = "<group>"; };
+		2B4C4AA32F850000000001AA /* Secrets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Secrets.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -132,6 +136,9 @@
 			children = (
 				2B4C48272F83283100B5DE08 /* TigerCompat.h */,
 				32CA4F630368D1EE00C91783 /* TigerTube_Prefix.pch */,
+				2B4C4AA32F850000000001AA /* Secrets.h */,
+				2B4C4AA02F850000000001AA /* YTClient.h */,
+				2B4C4AA12F850000000001AA /* YTClient.m */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 			);
 			name = "Other Sources";
@@ -231,6 +238,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D11072D0486CEB800E47090 /* main.m in Sources */,
+				2B4C4AA22F850000000001AA /* YTClient.m in Sources */,
 				2B4C481D2F8324CD00B5DE08 /* NSObject+SBJSON.m in Sources */,
 				2B4C481E2F8324CD00B5DE08 /* NSString+SBJSON.m in Sources */,
 				2B4C481F2F8324CD00B5DE08 /* SBJSON.m in Sources */,

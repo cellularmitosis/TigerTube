@@ -2,33 +2,17 @@
 //  main.m
 //  TigerTube
 //
+//  Feasibility harness: performs a real YouTube Data API v3 search directly
+//  from Tiger and reports per-phase wall-clock timing.  This lets us decide
+//  whether the G3 can drive the API directly or whether API calls need to
+//  go through the transcoding proxy.
+//
 
 #import <Cocoa/Cocoa.h>
-#import "JSON.h"
+#import "YTClient.h"
+#import "Secrets.h"
 #include <stdio.h>
-#include <string.h>
 #include <curl/curl.h>
-
-/* Buffer that grows as curl receives data. */
-struct responseBuffer {
-    char *data;
-    size_t size;
-};
-
-static size_t writeCallback(void *ptr, size_t size, size_t nmemb, void *userdata)
-{
-    size_t realsize = size * nmemb;
-    struct responseBuffer *buf = (struct responseBuffer *)userdata;
-    char *newdata = (char *)realloc(buf->data, buf->size + realsize + 1);
-    if (newdata == NULL) {
-        return 0;
-    }
-    buf->data = newdata;
-    memcpy(buf->data + buf->size, ptr, realsize);
-    buf->size += realsize;
-    buf->data[buf->size] = '\0';
-    return realsize;
-}
 
 int main(int argc, char *argv[])
 {
@@ -43,104 +27,64 @@ int main(int argc, char *argv[])
     }
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    CURL *curl = curl_easy_init();
-    if (curl == NULL) {
-        fprintf(stderr, "FAIL: curl_easy_init returned NULL\n");
+
+    NSString *apiKey = [NSString stringWithUTF8String:YOUTUBE_API_KEY];
+    YTClient *client = [[[YTClient alloc] initWithAPIKey:apiKey
+                                            caBundlePath:caPath] autorelease];
+    if (client == nil) {
+        fprintf(stderr, "FAIL: YTClient init failed\n");
         curl_global_cleanup();
         [pool release];
         return 1;
     }
 
-    struct responseBuffer buf;
-    buf.data = (char *)malloc(1);
-    buf.size = 0;
-    buf.data[0] = '\0';
+    /* Default query -- override with argv if supplied. */
+    NSString *query = @"tiger powerpc mac";
+    int maxResults = 25;
+    if (argc >= 2) {
+        query = [NSString stringWithUTF8String:argv[1]];
+    }
+    if (argc >= 3) {
+        maxResults = atoi(argv[2]);
+        if (maxResults < 1) maxResults = 1;
+        if (maxResults > 50) maxResults = 50;
+    }
 
-    const char *url = "https://rocketcal.cc/2561bed5d594db0698d99f3d35178ce3/2561bed5d594db0698d99f3d35178ce3.json";
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_CAINFO, [caPath UTF8String]);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buf);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SBJsonTest/1.0");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    printf("=== TigerTube YouTube API feasibility test ===\n");
+    printf("query:      \"%s\"\n", [query UTF8String]);
+    printf("maxResults: %d\n\n", maxResults);
+    fflush(stdout);
 
-    CURLcode res = curl_easy_perform(curl);
-    long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    NSDate *t0 = [NSDate date];
+    NSArray *results = [client searchVideos:query maxResults:maxResults];
+    NSTimeInterval total = -[t0 timeIntervalSinceNow];
 
-    if (res != CURLE_OK) {
-        fprintf(stderr, "FAIL: curl_easy_perform: %s\n", curl_easy_strerror(res));
-        free(buf.data);
-        curl_easy_cleanup(curl);
+    if (results == nil) {
+        fprintf(stderr, "FAIL: searchVideos returned nil\n");
         curl_global_cleanup();
         [pool release];
         return 1;
     }
-    printf("HTTP %ld, %lu bytes\n", httpCode, (unsigned long)buf.size);
 
-    /* Wrap the response bytes in an NSString, then parse with SBJson. */
-    NSString *body = [[[NSString alloc] initWithBytes:buf.data
-                                               length:buf.size
-                                             encoding:NSUTF8StringEncoding] autorelease];
-    free(buf.data);
-    curl_easy_cleanup(curl);
+    fprintf(stderr, "\n=== total: %.2fs for %d results ===\n\n",
+            total, (int)[results count]);
+    fflush(stderr);
+
+    int i = 0;
+    NSEnumerator *e = [results objectEnumerator];
+    NSDictionary *row;
+    while ((row = [e nextObject]) != nil) {
+        i++;
+        NSString *title = [row objectForKey:@"title"];
+        NSString *channel = [row objectForKey:@"channelTitle"];
+        NSString *duration = [row objectForKey:@"duration"];
+        printf("%2d. [%-9s] %s\n", i,
+               duration ? [duration UTF8String] : "???",
+               [title UTF8String]);
+        printf("              -- %s\n", [channel UTF8String]);
+    }
+
     curl_global_cleanup();
-
-    if (body == nil) {
-        fprintf(stderr, "FAIL: response was not valid UTF-8\n");
-        [pool release];
-        return 1;
-    }
-
-    id parsed = [body JSONValue];
-    if (parsed == nil) {
-        fprintf(stderr, "FAIL: SBJson could not parse the response\n");
-        [pool release];
-        return 1;
-    }
-    printf("parsed top-level type: %s\n", [[[parsed class] description] UTF8String]);
-
-    /* Print a short summary of the structure. */
-    if ([parsed isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *dict = (NSDictionary *)parsed;
-        printf("top-level keys (%lu):\n", (unsigned long)[dict count]);
-        NSEnumerator *keyEnum = [dict keyEnumerator];
-        NSString *key;
-        while ((key = [keyEnum nextObject]) != nil) {
-            id value = [dict objectForKey:key];
-            printf("  %s -> %s\n",
-                   [key UTF8String],
-                   [[[value class] description] UTF8String]);
-        }
-
-        NSArray *rockets = [dict objectForKey:@"auto_rockets"];
-        if ([rockets isKindOfClass:[NSArray class]]) {
-            printf("auto_rockets count: %lu\n", (unsigned long)[rockets count]);
-
-            /* Pull a field out of the first rocket to prove we really walked the tree. */
-            if ([rockets count] > 0) {
-                NSDictionary *first = [rockets objectAtIndex:0];
-                NSDictionary *groups = [first objectForKey:@"groups"];
-                NSNumber *weight = [first objectForKey:@"weight"];
-                printf("first rocket: weight=%.1f, groups=%lu\n",
-                       [weight doubleValue],
-                       (unsigned long)[groups count]);
-
-                NSEnumerator *groupKeys = [groups keyEnumerator];
-                NSString *groupKey;
-                while ((groupKey = [groupKeys nextObject]) != nil) {
-                    NSDictionary *group = [groups objectForKey:groupKey];
-                    NSNumber *count = [group objectForKey:@"count"];
-                    NSString *item = [group objectForKey:@"item"];
-                    printf("  group %s: %d x %s\n",
-                           [groupKey UTF8String],
-                           [count intValue],
-                           [item UTF8String]);
-                }
-            }
-        }
-    }
-
     [pool release];
     return 0;
 }
