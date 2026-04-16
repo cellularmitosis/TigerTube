@@ -93,6 +93,15 @@ static void* audioThreadFunc(void* arg);
         firstDecodeLogged = NO;
         firstDisplayLogged = NO;
 
+        tickLastWall = 0;
+        tickCount = 0;
+        tickIntervalSum = 0;
+        tickIntervalMax = 0;
+        glTimeSum = 0;
+        glTimeMax = 0;
+        glTickCount = 0;
+        otherTimeSum = 0;
+
         [self buildWindow];
     }
     return self;
@@ -256,12 +265,18 @@ static void* audioThreadFunc(void* arg);
         return;
     }
 
-    /* Audio is running -- cap lookahead to ~200 ms past the audio clock. */
+    /* Pace the decoder one frame at a time: keep at most ~40 ms of lead
+       past the audio clock.  libmpeg2 runs at ~267 fps (11x real-time) on
+       this G3, so without tight pacing it emits frames in bursts of 2-3
+       before hitting the lookahead cap, then idles.  The single-slot
+       frameBuffer loses all but the last frame in each burst, which is
+       why display fps was half of decode fps.  Per-frame pacing produces
+       one frame every ~42 ms, matched to the 30 Hz display timer. */
     double decodedTime = (double)[videoDecoder framesDecoded] / fps;
     double audioTime = (double)[audioPlayer samplesPlayed] / 44100.0;
-    double aheadBy = decodedTime - audioTime;
-    if (aheadBy > 0.20) {
-        double sleepSec = aheadBy - 0.10;
+    double targetLead = 0.040;
+    if (decodedTime - audioTime > targetLead) {
+        double sleepSec = decodedTime - audioTime - targetLead;
         usleep((unsigned long)(sleepSec * 1000000.0));
     }
 }
@@ -274,6 +289,19 @@ static void* audioThreadFunc(void* arg);
         displayTimer = nil;
         return;
     }
+
+    /* Tick-cadence instrumentation: interval since previous tick. */
+    double tickStart = ttWallSec();
+    if (tickLastWall > 0) {
+        double iv = tickStart - tickLastWall;
+        tickIntervalSum += iv;
+        tickCount++;
+        if (iv > tickIntervalMax) {
+            tickIntervalMax = iv;
+        }
+    }
+    tickLastWall = tickStart;
+    double thisGlTime = 0;
 
     /* Set up the GL texture once we know the video dimensions. */
     if (!texSetup && [videoDecoder isSequenceReady]) {
@@ -313,19 +341,24 @@ static void* audioThreadFunc(void* arg);
     /* Display the latest decoded frame if one is ready. */
     if (frameReady && texSetup) {
         frameReady = NO;
-        double t0 = ttWallSec();
+        double glT0 = ttWallSec();
         [playerView displayFrame:frameBuffer
                            width:frameWidth
                           height:frameHeight
                           stride:frameStride];
+        thisGlTime = ttWallSec() - glT0;
         framesDisplayed++;
+        glTimeSum += thisGlTime;
+        glTickCount++;
+        if (thisGlTime > glTimeMax) {
+            glTimeMax = thisGlTime;
+        }
         if (!firstDisplayLogged) {
             firstDisplayLogged = YES;
-            double dt = ttWallSec() - t0;
             fprintf(stderr,
                 "player: first display at wall=%.3fs (decoded=%lu, gl took %.3fs)\n",
                 ttWallSec() - statsWall0,
-                [videoDecoder framesDecoded], dt);
+                [videoDecoder framesDecoded], thisGlTime);
         }
     }
 
@@ -338,8 +371,12 @@ static void* audioThreadFunc(void* arg);
         [window setTitle:t];
     }
 
+    /* Accumulate non-GL tick work (setTitle, audio-start check, etc.). */
+    double tickEnd = ttWallSec();
+    otherTimeSum += (tickEnd - tickStart) - thisGlTime;
+
     /* Periodic stats -- every ~0.5 seconds of wall time. */
-    double nowWall = ttWallSec();
+    double nowWall = tickEnd;
     if (nowWall - statsWallLast >= 0.5) {
         double nowCpu = ttCpuSec();
         double dt = nowWall - statsWallLast;
@@ -359,15 +396,32 @@ static void* audioThreadFunc(void* arg);
         if (fps > 0) {
             decSec = (double)decNow / fps;
         }
+        double tickAvgMs = (tickCount > 0)
+            ? (tickIntervalSum / (double)tickCount) * 1000.0 : 0;
+        double tickMaxMs = tickIntervalMax * 1000.0;
+        double glAvgMs = (glTickCount > 0)
+            ? (glTimeSum / (double)glTickCount) * 1000.0 : 0;
+        double glMaxMs = glTimeMax * 1000.0;
+        double otherAvgMs = (tickCount > 0)
+            ? (otherTimeSum / (double)tickCount) * 1000.0 : 0;
         fprintf(stderr,
-            "player: t=%.1fs dec=%.1ffps dis=%.1ffps drop=%lu cpu=%.0f%% ring=%u%% decT=%.2fs audT=%.2fs\n",
+            "player: t=%.1fs dec=%.1ffps dis=%.1ffps drop=%lu cpu=%.0f%% ring=%u%% decT=%.2fs audT=%.2fs tick=%.1f/%.1fms gl=%.1f/%.1fms other=%.1fms\n",
             nowWall - statsWall0,
             (double)dec / dt, (double)dis / dt, framesDropped,
-            (dcpu / dt) * 100.0, ringPct, decSec, audioSec);
+            (dcpu / dt) * 100.0, ringPct, decSec, audioSec,
+            tickAvgMs, tickMaxMs, glAvgMs, glMaxMs, otherAvgMs);
         statsWallLast = nowWall;
         statsCpuLast = nowCpu;
         statsDecLast = decNow;
         statsDispLast = framesDisplayed;
+        /* Reset tick-cadence accumulators for the next window. */
+        tickCount = 0;
+        tickIntervalSum = 0;
+        tickIntervalMax = 0;
+        glTimeSum = 0;
+        glTimeMax = 0;
+        glTickCount = 0;
+        otherTimeSum = 0;
     }
 
     /* Check for end of streams. */

@@ -53,6 +53,16 @@
     unsigned long statsDispLast;     /* framesDisplayed at last log */
     BOOL firstDecodeLogged;          /* for first-decode diagnostic */
     BOOL firstDisplayLogged;         /* for first-display diagnostic */
+
+    /* Tick-cadence instrumentation (reset every 0.5s stats window). */
+    double tickLastWall;             /* wall time of previous tick start */
+    unsigned int tickCount;          /* ticks since last stats print */
+    double tickIntervalSum;          /* sum of tick intervals (sec) */
+    double tickIntervalMax;          /* max tick interval (sec) */
+    double glTimeSum;                /* sum of displayFrame: wall time (sec) */
+    double glTimeMax;                /* max displayFrame: wall time (sec) */
+    unsigned int glTickCount;        /* ticks that ran displayFrame: */
+    double otherTimeSum;             /* sum of non-GL tick work (sec) */
 }
 
 /* Create and show a player window for the given video.
