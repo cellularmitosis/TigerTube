@@ -14,6 +14,7 @@
 #import "ThumbnailCache.h"
 
 @class YTClient;
+@class TTPlayerWindowController;
 
 @interface AppController : NSObject <ThumbnailCacheDelegate> {
     YTClient* client;             /* strong */
@@ -23,6 +24,8 @@
     NSSearchField* searchField;   /* weak (retained by view hierarchy) */
     NSTableView* tableView;       /* weak (retained by NSScrollView) */
     BOOL searching;
+    TTPlayerWindowController* playerController;  /* strong, current player */
+    NSString* proxyHost;          /* strong */
 }
 
 /* NSApplication delegate */
@@ -30,6 +33,9 @@
 
 /* NSSearchField action */
 - (void)searchAction:(id)sender;
+
+/* Table click action -- starts playback of the clicked row. */
+- (void)tableClick:(id)sender;
 
 /* NSTableView data source */
 - (int)numberOfRowsInTableView:(NSTableView*)tv;

@@ -26,6 +26,17 @@
 		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
 		8D11072D0486CEB800E47090 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 29B97316FDCFA39411CA2CEA /* main.m */; settings = {ATTRIBUTES = (); }; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
+		2B4C4B012F900001000001AA /* libmpeg2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B002F900001000001AA /* libmpeg2.a */; };
+		2B4C4B032F900002000001AA /* libmpeg2convert.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B022F900002000001AA /* libmpeg2convert.a */; };
+		2B4C4B052F900003000001AA /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B042F900003000001AA /* OpenGL.framework */; };
+		2B4C4B072F900004000001AA /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B062F900004000001AA /* AudioUnit.framework */; };
+		2B4C4B092F900005000001AA /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B082F900005000001AA /* AudioToolbox.framework */; };
+		2B4C4B0B2F900006000001AA /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B0A2F900006000001AA /* CoreAudio.framework */; };
+		2B4C4B0D2F900007000001AA /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B4C4B0C2F900007000001AA /* Carbon.framework */; };
+		2B4C4B122F900012000001AA /* TTVideoDecoder.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B112F900011000001AA /* TTVideoDecoder.m */; };
+		2B4C4B152F900015000001AA /* TTAudioPlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B142F900014000001AA /* TTAudioPlayer.m */; };
+		2B4C4B182F900018000001AA /* TTPlayerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B172F900017000001AA /* TTPlayerView.m */; };
+		2B4C4B1B2F90001B000001AA /* TTPlayerWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -68,6 +79,21 @@
 		2B4C4AC12F870000000001AA /* ThumbnailCache.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ThumbnailCache.m; sourceTree = "<group>"; };
 		2B4C4AD02F880000000001AA /* ResultCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ResultCell.h; sourceTree = "<group>"; };
 		2B4C4AD12F880000000001AA /* ResultCell.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ResultCell.m; sourceTree = "<group>"; };
+		2B4C4B002F900001000001AA /* libmpeg2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpeg2.a; path = libs/libmpeg2/lib/libmpeg2.a; sourceTree = "<group>"; };
+		2B4C4B022F900002000001AA /* libmpeg2convert.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpeg2convert.a; path = libs/libmpeg2/lib/libmpeg2convert.a; sourceTree = "<group>"; };
+		2B4C4B042F900003000001AA /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
+		2B4C4B062F900004000001AA /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = /System/Library/Frameworks/AudioUnit.framework; sourceTree = "<absolute>"; };
+		2B4C4B082F900005000001AA /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = /System/Library/Frameworks/AudioToolbox.framework; sourceTree = "<absolute>"; };
+		2B4C4B0A2F900006000001AA /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = /System/Library/Frameworks/CoreAudio.framework; sourceTree = "<absolute>"; };
+		2B4C4B0C2F900007000001AA /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = /System/Library/Frameworks/Carbon.framework; sourceTree = "<absolute>"; };
+		2B4C4B102F900010000001AA /* TTVideoDecoder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTVideoDecoder.h; sourceTree = "<group>"; };
+		2B4C4B112F900011000001AA /* TTVideoDecoder.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTVideoDecoder.m; sourceTree = "<group>"; };
+		2B4C4B132F900013000001AA /* TTAudioPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTAudioPlayer.h; sourceTree = "<group>"; };
+		2B4C4B142F900014000001AA /* TTAudioPlayer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTAudioPlayer.m; sourceTree = "<group>"; };
+		2B4C4B162F900016000001AA /* TTPlayerView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTPlayerView.h; sourceTree = "<group>"; };
+		2B4C4B172F900017000001AA /* TTPlayerView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTPlayerView.m; sourceTree = "<group>"; };
+		2B4C4B192F900019000001AA /* TTPlayerWindowController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTPlayerWindowController.h; sourceTree = "<group>"; };
+		2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTPlayerWindowController.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,6 +105,13 @@
 				2B4C49032F840001000001AA /* libcurl.a in Frameworks */,
 				2B4C490A2F840001000001AA /* libssl.a in Frameworks */,
 				2B4C490C2F840001000001AA /* libcrypto.a in Frameworks */,
+				2B4C4B012F900001000001AA /* libmpeg2.a in Frameworks */,
+				2B4C4B032F900002000001AA /* libmpeg2convert.a in Frameworks */,
+				2B4C4B052F900003000001AA /* OpenGL.framework in Frameworks */,
+				2B4C4B072F900004000001AA /* AudioUnit.framework in Frameworks */,
+				2B4C4B092F900005000001AA /* AudioToolbox.framework in Frameworks */,
+				2B4C4B0B2F900006000001AA /* CoreAudio.framework in Frameworks */,
+				2B4C4B0D2F900007000001AA /* Carbon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +130,11 @@
 			isa = PBXGroup;
 			children = (
 				1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */,
+				2B4C4B042F900003000001AA /* OpenGL.framework */,
+				2B4C4B062F900004000001AA /* AudioUnit.framework */,
+				2B4C4B082F900005000001AA /* AudioToolbox.framework */,
+				2B4C4B0A2F900006000001AA /* CoreAudio.framework */,
+				2B4C4B0C2F900007000001AA /* Carbon.framework */,
 			);
 			name = "Linked Frameworks";
 			sourceTree = "<group>";
@@ -139,6 +177,8 @@
 				2B4C490B2F840001000001AA /* libssl.a */,
 				2B4C490D2F840001000001AA /* libcrypto.a */,
 				2B4C49042F840001000001AA /* cacert.pem */,
+			2B4C4B002F900001000001AA /* libmpeg2.a */,
+			2B4C4B022F900002000001AA /* libmpeg2convert.a */,
 			);
 			name = libs;
 			sourceTree = "<group>";
@@ -159,6 +199,14 @@
 				2B4C4AC12F870000000001AA /* ThumbnailCache.m */,
 				2B4C4AD02F880000000001AA /* ResultCell.h */,
 				2B4C4AD12F880000000001AA /* ResultCell.m */,
+				2B4C4B102F900010000001AA /* TTVideoDecoder.h */,
+				2B4C4B112F900011000001AA /* TTVideoDecoder.m */,
+				2B4C4B132F900013000001AA /* TTAudioPlayer.h */,
+				2B4C4B142F900014000001AA /* TTAudioPlayer.m */,
+				2B4C4B162F900016000001AA /* TTPlayerView.h */,
+				2B4C4B172F900017000001AA /* TTPlayerView.m */,
+				2B4C4B192F900019000001AA /* TTPlayerWindowController.h */,
+				2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 			);
 			name = "Other Sources";
@@ -269,6 +317,10 @@
 				2B4C48202F8324CD00B5DE08 /* SBJsonBase.m in Sources */,
 				2B4C48212F8324CD00B5DE08 /* SBJsonParser.m in Sources */,
 				2B4C48222F8324CD00B5DE08 /* SBJsonWriter.m in Sources */,
+				2B4C4B122F900012000001AA /* TTVideoDecoder.m in Sources */,
+				2B4C4B152F900015000001AA /* TTAudioPlayer.m in Sources */,
+				2B4C4B182F900018000001AA /* TTPlayerView.m in Sources */,
+				2B4C4B1B2F90001B000001AA /* TTPlayerWindowController.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -306,12 +358,14 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/libs/curl/include",
 					"$(SRCROOT)/libs/openssl/include",
+					"$(SRCROOT)/libs/libmpeg2/include",
 				);
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
 				LIBRARY_SEARCH_PATHS = (
 					"$(SRCROOT)/libs/curl",
 					"$(SRCROOT)/libs/openssl",
+					"$(SRCROOT)/libs/libmpeg2/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-Wl,-search_paths_first",
@@ -334,12 +388,14 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/libs/curl/include",
 					"$(SRCROOT)/libs/openssl/include",
+					"$(SRCROOT)/libs/libmpeg2/include",
 				);
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
 				LIBRARY_SEARCH_PATHS = (
 					"$(SRCROOT)/libs/curl",
 					"$(SRCROOT)/libs/openssl",
+					"$(SRCROOT)/libs/libmpeg2/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-Wl,-search_paths_first",

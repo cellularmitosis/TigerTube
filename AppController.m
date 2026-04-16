@@ -7,6 +7,7 @@
 #import "YTClient.h"
 #import "NSString+.h"
 #import "ResultCell.h"
+#import "TTPlayerWindowController.h"
 #import "Secrets.h"
 #include <curl/curl.h>
 
@@ -15,6 +16,7 @@
 - (void)performSearchInBackground:(NSString*)query;
 - (void)searchDidFinish:(NSArray*)newResults;
 - (int)rowIndexForVideoId:(NSString*)videoId;
+- (void)playVideoAtIndex:(int)index;
 @end
 
 @implementation AppController
@@ -24,11 +26,16 @@
     if (self != nil) {
         results = [[NSMutableArray alloc] init];
         searching = NO;
+        playerController = nil;
+        /* Default proxy host -- the transcoding proxy on the local network. */
+        proxyHost = [@"http://192.168.1.240:5002" retain];
     }
     return self;
 }
 
 - (void)dealloc {
+    [playerController release];
+    [proxyHost release];
     [client release];
     [thumbCache release];
     [results release];
@@ -37,6 +44,7 @@
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
+    fprintf(stderr, "=== TigerTube launched (build %s %s) ===\n", __DATE__, __TIME__);
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     NSString* caPath = [[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"];
@@ -152,6 +160,8 @@
 
     [tv setDataSource:self];
     [tv setDelegate:self];
+    [tv setTarget:self];
+    [tv setAction:@selector(tableClick:)];
 
     [sv setDocumentView:tv];    /* sv retains tv */
     tableView = tv;             /* weak: retained by scroll view */
@@ -167,6 +177,7 @@
 #pragma mark -
 
 - (void)searchAction:(id)sender {
+    fprintf(stderr, "searchAction: fired\n");
     if (searching) {
         return;
     }
@@ -198,6 +209,8 @@
 }
 
 - (void)searchDidFinish:(NSArray*)newResults {
+    fprintf(stderr, "searchDidFinish: %d results\n",
+            newResults ? (int)[newResults count] : -1);
     if (newResults != nil) {
         [results removeAllObjects];
         /* Pre-decode titles/channels and pre-format duration and view
@@ -273,6 +286,53 @@
         }
     }
     return -1;
+}
+
+#pragma mark - Video playback
+
+- (void)tableClick:(id)sender {
+    int row = [tableView clickedRow];
+    fprintf(stderr, "tableClick: clickedRow=%d\n", row);
+    if (row < 0 || row >= (int)[results count]) {
+        return;
+    }
+    [self playVideoAtIndex:row];
+}
+
+- (void)playVideoAtIndex:(int)index {
+    fprintf(stderr, "playVideoAtIndex: %d\n", index);
+    NSDictionary* item = [results objectAtIndex:index];
+    NSString* videoId = [item objectForKey:@"videoId"];
+    NSString* title = [item objectForKey:@"title"];
+    fprintf(stderr, "playVideoAtIndex: videoId=%s title=%s\n",
+            videoId ? [videoId UTF8String] : "(nil)",
+            title ? [title UTF8String] : "(nil)");
+    if (videoId == nil) {
+        fprintf(stderr, "playVideoAtIndex: no videoId, aborting\n");
+        return;
+    }
+
+    /* Stop any existing player. */
+    if (playerController != nil) {
+        [playerController stop];
+        [playerController release];
+        playerController = nil;
+    }
+
+    NSString* vURL = [NSString stringWithFormat:
+        @"%@/v/yt/%@?w=320&h=240&br=800000&fps=24&g=12",
+        proxyHost, videoId];
+    NSString* aURL = [NSString stringWithFormat:
+        @"%@/a/yt/%@?rate=44100&ch=2",
+        proxyHost, videoId];
+
+    playerController = [[TTPlayerWindowController alloc]
+        initWithTitle:title
+             videoURL:vURL
+             audioURL:aURL];
+    if (playerController != nil) {
+        [playerController play];
+    }
 }
 
 #pragma mark - ThumbnailCacheDelegate
