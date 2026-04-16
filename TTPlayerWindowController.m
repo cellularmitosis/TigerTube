@@ -71,11 +71,20 @@ static void* audioThreadFunc(void* arg);
             return nil;
         }
 
-        frameBuffer = NULL;
+        {
+            int i;
+            for (i = 0; i < TT_FRAME_QUEUE_SIZE; i++) {
+                frameSlots[i] = NULL;
+            }
+        }
         frameWidth = 0;
         frameHeight = 0;
         frameStride = 0;
-        frameReady = NO;
+        queueHead = 0;
+        queueTail = 0;
+        queueCount = 0;
+        pthread_mutex_init(&queueMutex, NULL);
+        pthread_cond_init(&queueNotFull, NULL);
         texSetup = NO;
         videoStreamDone = NO;
         audioStreamDone = NO;
@@ -115,9 +124,16 @@ static void* audioThreadFunc(void* arg);
     [audioURL release];
     [videoTitle release];
     [window release];
-    if (frameBuffer != NULL) {
-        free(frameBuffer);
+    {
+        int i;
+        for (i = 0; i < TT_FRAME_QUEUE_SIZE; i++) {
+            if (frameSlots[i] != NULL) {
+                free(frameSlots[i]);
+            }
+        }
     }
+    pthread_cond_destroy(&queueNotFull);
+    pthread_mutex_destroy(&queueMutex);
     [super dealloc];
 }
 
@@ -202,6 +218,10 @@ static void* audioThreadFunc(void* arg);
     }
 
     stopRequested = YES;
+    /* Wake any decoder thread blocked on the frame-queue cond. */
+    pthread_mutex_lock(&queueMutex);
+    pthread_cond_broadcast(&queueNotFull);
+    pthread_mutex_unlock(&queueMutex);
     if (displayTimer != nil) {
         [displayTimer invalidate];
         displayTimer = nil;
@@ -217,25 +237,47 @@ static void* audioThreadFunc(void* arg);
               height:(unsigned int)h
               stride:(unsigned int)stride
 {
-    /* Called on the video network thread.
-       Copy the frame into our shared buffer. */
+    /* Called on the video network thread.  Enqueue into the 3-slot
+       ring buffer; block on queueNotFull if the display timer is
+       behind.  Blocking here propagates backpressure into the curl
+       write callback -> TCP -> proxy ffmpeg. */
     unsigned int size = stride * h;
-    if (frameBuffer == NULL || frameWidth != w || frameHeight != h) {
-        if (frameBuffer != NULL) {
-            free(frameBuffer);
+
+    pthread_mutex_lock(&queueMutex);
+
+    /* First frame, or dims changed: (re)allocate all slots.  Any
+       in-flight frames in the queue are dropped -- safe because the
+       old size is wrong for them anyway. */
+    if (frameSlots[0] == NULL || frameWidth != w || frameHeight != h) {
+        int i;
+        for (i = 0; i < TT_FRAME_QUEUE_SIZE; i++) {
+            if (frameSlots[i] != NULL) {
+                free(frameSlots[i]);
+            }
+            frameSlots[i] = (unsigned char*)malloc(size);
         }
-        frameBuffer = (unsigned char*)malloc(size);
         frameWidth = w;
         frameHeight = h;
         frameStride = stride;
+        queueHead = 0;
+        queueTail = 0;
+        queueCount = 0;
     }
-    /* If the previous frame hasn't been displayed yet, we're about to
-       overwrite it -- count that as a drop. */
-    if (frameReady) {
-        framesDropped++;
+
+    /* Block while the queue is full.  stop wakes us via broadcast. */
+    while (queueCount >= TT_FRAME_QUEUE_SIZE && !stopRequested) {
+        pthread_cond_wait(&queueNotFull, &queueMutex);
     }
-    memcpy(frameBuffer, uyvyData, size);
-    frameReady = YES;
+    if (stopRequested) {
+        pthread_mutex_unlock(&queueMutex);
+        return;
+    }
+
+    memcpy(frameSlots[queueTail], uyvyData, size);
+    queueTail = (queueTail + 1) % TT_FRAME_QUEUE_SIZE;
+    queueCount++;
+
+    pthread_mutex_unlock(&queueMutex);
 
     if (!firstDecodeLogged) {
         firstDecodeLogged = YES;
@@ -256,8 +298,8 @@ static void* audioThreadFunc(void* arg);
        already decoded.  Otherwise the decoder races ahead of the audio
        stream's startup time, and when audio finally begins we're N
        seconds into the video while audio is still at 0.  The first
-       frame is already copied to frameBuffer above, so the display
-       timer will show it immediately while we wait. */
+       frame is already in the queue above, so the display timer will
+       show it immediately while we wait. */
     while (![audioPlayer isRunning] && !stopRequested) {
         usleep(20000); /* 20 ms */
     }
@@ -338,14 +380,25 @@ static void* audioThreadFunc(void* arg);
         [audioPlayer start];
     }
 
-    /* Display the latest decoded frame if one is ready. */
-    if (frameReady && texSetup) {
-        frameReady = NO;
+    /* Non-blocking dequeue.  Holding the pointer past the unlock is
+       safe: decoder won't overwrite this slot until queueHead advances,
+       which only happens below after displayFrame: returns. */
+    unsigned char* slot = NULL;
+    unsigned int w = 0;
+    unsigned int h = 0;
+    unsigned int s = 0;
+    pthread_mutex_lock(&queueMutex);
+    if (queueCount > 0 && texSetup) {
+        slot = frameSlots[queueHead];
+        w = frameWidth;
+        h = frameHeight;
+        s = frameStride;
+    }
+    pthread_mutex_unlock(&queueMutex);
+
+    if (slot != NULL) {
         double glT0 = ttWallSec();
-        [playerView displayFrame:frameBuffer
-                           width:frameWidth
-                          height:frameHeight
-                          stride:frameStride];
+        [playerView displayFrame:slot width:w height:h stride:s];
         thisGlTime = ttWallSec() - glT0;
         framesDisplayed++;
         glTimeSum += thisGlTime;
@@ -360,15 +413,13 @@ static void* audioThreadFunc(void* arg);
                 ttWallSec() - statsWall0,
                 [videoDecoder framesDecoded], thisGlTime);
         }
-    }
 
-    /* Update window title with playback time. */
-    if ([audioPlayer isRunning]) {
-        double sec = (double)[audioPlayer samplesPlayed] / 44100.0;
-        int m = (int)(sec / 60.0);
-        int s = (int)sec % 60;
-        NSString* t = [NSString stringWithFormat:@"%@ - %d:%02d", videoTitle, m, s];
-        [window setTitle:t];
+        /* Release the slot and wake the decoder if it's blocked. */
+        pthread_mutex_lock(&queueMutex);
+        queueHead = (queueHead + 1) % TT_FRAME_QUEUE_SIZE;
+        queueCount--;
+        pthread_cond_signal(&queueNotFull);
+        pthread_mutex_unlock(&queueMutex);
     }
 
     /* Accumulate non-GL tick work (setTitle, audio-start check, etc.). */

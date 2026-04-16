@@ -10,10 +10,17 @@
 #define TT_PLAYER_WINDOW_CONTROLLER_H
 
 #import <Cocoa/Cocoa.h>
+#include <pthread.h>
 #import "TigerCompat.h"
 #import "TTVideoDecoder.h"
 #import "TTAudioPlayer.h"
 #import "TTPlayerView.h"
+
+/* Depth of the decoder->display UYVY frame queue.  Needs to be at least
+   2 so a single slow display tick doesn't starve the decoder into
+   dropping.  3 gives a bit of headroom for GL spikes without adding
+   noticeable latency (3 frames at 24fps = 125ms). */
+#define TT_FRAME_QUEUE_SIZE 3
 
 @interface TTPlayerWindowController : NSObject <TTVideoDecoderDelegate> {
 @public
@@ -30,12 +37,18 @@
     TTPlayerView* playerView;      /* weak (retained by window) */
     NSTimer* displayTimer;         /* strong (retained by run loop) */
 
-    /* Shared frame buffer: written by decode thread, read by display timer */
-    unsigned char* frameBuffer;    /* malloc'd UYVY buffer */
+    /* Decoder -> display UYVY frame queue.  Decoder blocks on
+       queueNotFull when all slots are in use; display timer
+       non-blocking-dequeues and skips the tick when empty. */
+    unsigned char* frameSlots[TT_FRAME_QUEUE_SIZE]; /* malloc'd UYVY buffers */
     unsigned int frameWidth;
     unsigned int frameHeight;
     unsigned int frameStride;
-    volatile BOOL frameReady;      /* new frame available */
+    unsigned int queueHead;        /* next slot to display */
+    unsigned int queueTail;        /* next slot to fill */
+    unsigned int queueCount;       /* full slots */
+    pthread_mutex_t queueMutex;
+    pthread_cond_t queueNotFull;   /* decoder waits on this when full */
     BOOL texSetup;                 /* texture created for this sequence */
 
     /* Playback info */
