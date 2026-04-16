@@ -10,6 +10,45 @@
 #import "TTPlayerWindowController.h"
 #import "Secrets.h"
 #include <curl/curl.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+/* -[NSNetService port] isn't declared in the 10.4 SDK (added in 10.5),
+   so pull the port out of the first resolved address instead -- each
+   element of [service addresses] is an NSData wrapping a sockaddr. */
+static int ttPortFromNetService(NSNetService* service) {
+    NSArray* addrs = [service addresses];
+    if ([addrs count] == 0) {
+        return 0;
+    }
+    NSData* data = [addrs objectAtIndex:0];
+    const struct sockaddr* sa = (const struct sockaddr*)[data bytes];
+    if (sa->sa_family == AF_INET) {
+        const struct sockaddr_in* sin = (const struct sockaddr_in*)sa;
+        return (int)ntohs(sin->sin_port);
+    }
+    if (sa->sa_family == AF_INET6) {
+        const struct sockaddr_in6* sin6 = (const struct sockaddr_in6*)sa;
+        return (int)ntohs(sin6->sin6_port);
+    }
+    return 0;
+}
+
+/* Transcode parameters sent to the proxy.  Tuned for 320x240 @ 24fps
+   playback on a 600 MHz iMac G3 without AltiVec -- the decoder has
+   ~11x realtime headroom at these settings.
+
+   TT_VIDEO_QSCALE selects constant-quality VBR (ffmpeg -q:v).  Range
+   is 2-31 for MPEG-1, lower = better.  Preferred over bitrate mode
+   on a wired LAN where bandwidth isn't the constraint -- avoids the
+   pixelation spikes that a CBR target produces on high-motion frames. */
+static const int TT_VIDEO_WIDTH    = 320;
+static const int TT_VIDEO_HEIGHT   = 240;
+static const int TT_VIDEO_QSCALE   = 4;      /* 2-31, lower=better */
+static const int TT_VIDEO_FPS      = 24;
+static const int TT_VIDEO_GOP      = 12;     /* I-frame every 0.5s at 24fps */
+static const int TT_AUDIO_RATE     = 44100;  /* Hz */
+static const int TT_AUDIO_CHANNELS = 2;
 
 @interface AppController (Private)
 - (void)buildWindow;
@@ -27,8 +66,14 @@
         results = [[NSMutableArray alloc] init];
         searching = NO;
         playerController = nil;
-        /* Default proxy host -- the transcoding proxy on the local network. */
-        proxyHost = [@"http://192.168.1.240:5002" retain];
+        /* Fallback proxy host -- used if Bonjour discovery doesn't
+           find one in time.  Will be replaced once a proxy is resolved.
+           Deliberately set to a non-responsive IP so a failed discovery
+           is obvious rather than silently working via the hardcoded one. */
+        proxyHost = [@"http://192.168.1.2:5002" retain];
+        proxyDiscovered = NO;
+        proxyBrowser = nil;
+        resolving = [[NSMutableArray alloc] init];
     }
     return self;
 }
@@ -36,6 +81,18 @@
 - (void)dealloc {
     [playerController release];
     [proxyHost release];
+    [proxyBrowser stop];
+    [proxyBrowser setDelegate:nil];
+    [proxyBrowser release];
+    {
+        NSEnumerator* e = [resolving objectEnumerator];
+        NSNetService* svc;
+        while ((svc = [e nextObject]) != nil) {
+            [svc stop];
+            [svc setDelegate:nil];
+        }
+    }
+    [resolving release];
     [client release];
     [thumbCache release];
     [results release];
@@ -71,6 +128,15 @@
     [thumbCache setDelegate:self];
 
     [self buildWindow];
+
+    /* Start Bonjour discovery for a proxy on the LAN.  Runs async on the
+       main run loop; the first resolved service replaces proxyHost. */
+    proxyBrowser = [[NSNetServiceBrowser alloc] init];
+    [proxyBrowser setDelegate:self];
+    [proxyBrowser searchForServicesOfType:@"_tigertube-proxy._tcp."
+                                 inDomain:@"local."];
+    fprintf(stderr, "proxy: bonjour browse started (fallback=%s)\n",
+            [proxyHost UTF8String]);
 }
 
 - (void)buildWindow {
@@ -95,29 +161,102 @@
     NSView* content = [window contentView];
     NSRect cb = [content bounds];
     float margin = 10.0f;
-    float searchH = 22.0f;
+
+    /* Search field -- bigger-than-default font so the query is
+       readable from across the room.  Field height grows to match.
+
+       Using plain NSTextField rather than NSSearchField: Tiger's aqua
+       search-bar chrome is drawn at a fixed height and doesn't scale
+       with the font, so a doubled-font NSSearchField ends up with its
+       white text cell spilling out past the rounded bezel.  A plain
+       bezeled NSTextField scales cleanly to any size. */
+    float searchFontSize = [NSFont smallSystemFontSize] * 2.0f;
+    float searchH = searchFontSize + 12.0f;
 
     /* Search field -- top, full width, springs from top. */
     NSRect searchFrame = NSMakeRect(margin,
                                     cb.size.height - margin - searchH,
                                     cb.size.width - 2 * margin,
                                     searchH);
-    NSSearchField* sf = [[NSSearchField alloc] initWithFrame:searchFrame];
+    NSTextField* sf = [[NSTextField alloc] initWithFrame:searchFrame];
     [sf setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
+    [sf setFont:[NSFont systemFontOfSize:searchFontSize]];
+    [sf setBezeled:YES];
+    [sf setBezelStyle:NSTextFieldSquareBezel];
+    [sf setDrawsBackground:YES];
+    [sf setEditable:YES];
+    [sf setSelectable:YES];
     [sf setTarget:self];
     [sf setAction:@selector(searchAction:)];
+    /* NSTextField fires its action on commit (Return / end-editing),
+       which is exactly what we want -- no per-keystroke fire. */
     [[sf cell] setPlaceholderString:@"Search YouTube..."];
-    /* Only fire the action on Return, not on every keystroke. */
-    [[sf cell] setSendsWholeSearchString:YES];
     [content addSubview:sf];
     searchField = sf;    /* weak: retained by superview */
     [sf release];
+
+    /* Controls row -- below search field, above table.  Labels + popups
+       for resolution and quality, all left-justified on the same line. */
+    float controlsH = 26.0f;
+    float rowY = cb.size.height - 2 * margin - searchH - controlsH;
+    float x = margin;
+
+    float resLabelW = 90.0f;
+    NSTextField* resLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(x, rowY, resLabelW, controlsH)];
+    [resLabel setStringValue:@"Resolution:"];
+    [resLabel setBezeled:NO];
+    [resLabel setDrawsBackground:NO];
+    [resLabel setEditable:NO];
+    [resLabel setSelectable:NO];
+    [resLabel setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:resLabel];
+    [resLabel release];
+    x += resLabelW;
+
+    float resPopW = 100.0f;
+    NSPopUpButton* resPop = [[NSPopUpButton alloc] initWithFrame:
+        NSMakeRect(x, rowY, resPopW, controlsH)];
+    [resPop addItemsWithTitles:[NSArray arrayWithObjects:
+        @"240x180", @"320x240", @"400x300", @"480x360",
+        @"560x420", @"640x480", nil]];
+    [resPop selectItemWithTitle:@"320x240"];
+    [resPop setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:resPop];
+    resolutionPopup = resPop; /* weak: retained by superview */
+    [resPop release];
+    x += resPopW + 20.0f; /* gap before next label */
+
+    float qLabelW = 60.0f;
+    NSTextField* qLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(x, rowY, qLabelW, controlsH)];
+    [qLabel setStringValue:@"Quality:"];
+    [qLabel setBezeled:NO];
+    [qLabel setDrawsBackground:NO];
+    [qLabel setEditable:NO];
+    [qLabel setSelectable:NO];
+    [qLabel setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:qLabel];
+    [qLabel release];
+    x += qLabelW;
+
+    float qPopW = 60.0f;
+    NSPopUpButton* qPop = [[NSPopUpButton alloc] initWithFrame:
+        NSMakeRect(x, rowY, qPopW, controlsH)];
+    [qPop addItemsWithTitles:[NSArray arrayWithObjects:
+        @"2", @"3", @"4", @"5", @"6", @"7", @"8", nil]];
+    [qPop selectItemWithTitle:@"4"];
+    [qPop setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:qPop];
+    qualityPopup = qPop; /* weak: retained by superview */
+    [qPop release];
 
     /* Table in a scroll view -- fills the rest, grows in both axes. */
     NSRect scrollFrame = NSMakeRect(margin,
                                     margin,
                                     cb.size.width - 2 * margin,
-                                    cb.size.height - 3 * margin - searchH);
+                                    cb.size.height - 4 * margin
+                                        - searchH - controlsH);
     NSScrollView* sv = [[NSScrollView alloc] initWithFrame:scrollFrame];
     [sv setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
     [sv setHasVerticalScroller:YES];
@@ -240,6 +379,11 @@
         }
     }
     [tableView reloadData];
+    /* Scroll to the top -- otherwise a second search while scrolled
+       mid-list leaves the user looking at row 15 of the new results. */
+    if ([results count] > 0) {
+        [tableView scrollRowToVisible:0];
+    }
     searching = NO;
     [searchField setEnabled:YES];
     [window makeFirstResponder:searchField];
@@ -319,12 +463,36 @@
         playerController = nil;
     }
 
+    /* Read the resolution/quality popup selections.  The popups are
+       populated with known-good strings in buildWindow, so we don't
+       need defensive parsing -- just split "WxH" on "x" and atoi the
+       quality.  Fall back to the constants if anything looks off. */
+    int width  = TT_VIDEO_WIDTH;
+    int height = TT_VIDEO_HEIGHT;
+    int qscale = TT_VIDEO_QSCALE;
+    NSString* resTitle = [resolutionPopup titleOfSelectedItem];
+    NSArray* wh = [resTitle componentsSeparatedByString:@"x"];
+    if ([wh count] == 2) {
+        width  = [[wh objectAtIndex:0] intValue];
+        height = [[wh objectAtIndex:1] intValue];
+    }
+    NSString* qTitle = [qualityPopup titleOfSelectedItem];
+    int qParsed = [qTitle intValue];
+    if (qParsed >= 2 && qParsed <= 31) {
+        qscale = qParsed;
+    }
+    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d\n",
+            width, height, qscale);
+
     NSString* vURL = [NSString stringWithFormat:
-        @"%@/v/yt/%@?w=320&h=240&br=800000&fps=24&g=12",
-        proxyHost, videoId];
+        @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d",
+        proxyHost, videoId,
+        width, height, qscale,
+        TT_VIDEO_FPS, TT_VIDEO_GOP];
     NSString* aURL = [NSString stringWithFormat:
-        @"%@/a/yt/%@?rate=44100&ch=2",
-        proxyHost, videoId];
+        @"%@/a/yt/%@?rate=%d&ch=%d",
+        proxyHost, videoId,
+        TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
 
     playerController = [[TTPlayerWindowController alloc]
         initWithTitle:title
@@ -333,6 +501,82 @@
     if (playerController != nil) {
         [playerController play];
     }
+}
+
+#pragma mark - Bonjour proxy discovery
+
+/* NSNetServiceBrowser delivers an unresolved NSNetService (name only).
+   We have to call resolveWithTimeout: on it to get the hostname and
+   port, then pick the first one that resolves.  The service object
+   must stay retained for the duration of the resolve, so we stash it
+   in resolving[] until its delegate callback fires. */
+
+- (void)netServiceBrowser:(NSNetServiceBrowser*)browser
+            didFindService:(NSNetService*)service
+                moreComing:(BOOL)moreComing
+{
+    fprintf(stderr, "proxy: found '%s' in domain '%s', resolving...\n",
+            [[service name] UTF8String], [[service domain] UTF8String]);
+    [service setDelegate:self];
+    [resolving addObject:service]; /* retain until resolution finishes */
+    [service resolveWithTimeout:5.0];
+}
+
+- (void)netServiceBrowser:(NSNetServiceBrowser*)browser
+          didRemoveService:(NSNetService*)service
+                moreComing:(BOOL)moreComing
+{
+    fprintf(stderr, "proxy: service '%s' went away\n",
+            [[service name] UTF8String]);
+    /* We don't revert proxyHost -- the user may already be mid-playback
+       and the old URL might still work briefly.  If playback fails they
+       can restart the app. */
+}
+
+- (void)netServiceBrowser:(NSNetServiceBrowser*)browser
+              didNotSearch:(NSDictionary*)errorInfo
+{
+    fprintf(stderr, "proxy: bonjour browse failed: %s\n",
+            [[errorInfo description] UTF8String]);
+}
+
+- (void)netServiceDidResolveAddress:(NSNetService*)service {
+    NSString* host = [service hostName];
+    int port = ttPortFromNetService(service);
+    if (host == nil || port <= 0) {
+        fprintf(stderr, "proxy: resolved '%s' but host/port missing\n",
+                [[service name] UTF8String]);
+        [resolving removeObject:service];
+        return;
+    }
+    /* hostName often has a trailing dot (e.g. "macmini.local.").
+       Trim it -- harmless for DNS but ugly in URLs/logs. */
+    if ([host hasSuffix:@"."]) {
+        host = [host substringToIndex:[host length] - 1];
+    }
+
+    NSString* url = [NSString stringWithFormat:@"http://%@:%d", host, port];
+    fprintf(stderr, "proxy: resolved '%s' -> %s\n",
+            [[service name] UTF8String], [url UTF8String]);
+
+    if (!proxyDiscovered) {
+        proxyDiscovered = YES;
+        [proxyHost release];
+        proxyHost = [url retain];
+        [window setTitle:[NSString stringWithFormat:
+                             @"TigerTube (proxy: %@:%d)", host, port]];
+    }
+
+    [service stop];
+    [service setDelegate:nil];
+    [resolving removeObject:service];
+}
+
+- (void)netService:(NSNetService*)service didNotResolve:(NSDictionary*)err {
+    fprintf(stderr, "proxy: failed to resolve '%s': %s\n",
+            [[service name] UTF8String], [[err description] UTF8String]);
+    [service setDelegate:nil];
+    [resolving removeObject:service];
 }
 
 #pragma mark - ThumbnailCacheDelegate
