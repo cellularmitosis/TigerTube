@@ -4,6 +4,7 @@
 //
 
 #import "TTPlayerView.h"
+#import "TTPlayerWindowController.h"
 #import <OpenGL/OpenGL.h>
 
 #ifndef GL_YCBCR_422_APPLE
@@ -44,8 +45,13 @@ static unsigned int nextPow2(unsigned int v) {
         srcH = 0;
         texW = 0;
         texH = 0;
+        controller = nil;
     }
     return self;
+}
+
+- (void)setController:(TTPlayerWindowController*)c {
+    controller = c; /* weak */
 }
 
 - (void)dealloc {
@@ -122,12 +128,32 @@ static unsigned int nextPow2(unsigned int v) {
     float bw = bounds.size.width;
     float bh = bounds.size.height;
 
+    /* Letterbox: fit src aspect inside the view, black bars on the
+       leftover axis.  Matters for fullscreen (where view aspect is
+       the screen's, not the video's) and for freely-resized windows. */
+    float srcAspect = (float)srcW / (float)srcH;
+    float viewAspect = bw / bh;
+    float dx, dy, dw, dh;
+    if (viewAspect > srcAspect) {
+        /* view wider than video -- bars on left/right */
+        dh = bh;
+        dw = bh * srcAspect;
+        dx = (bw - dw) * 0.5f;
+        dy = 0;
+    } else {
+        /* view taller than video (or equal) -- bars top/bottom */
+        dw = bw;
+        dh = bw / srcAspect;
+        dx = 0;
+        dy = (bh - dh) * 0.5f;
+    }
+
     glClear(GL_COLOR_BUFFER_BIT);
     glBegin(GL_QUADS);
-        glTexCoord2f(0, v); glVertex2f(0,  0);
-        glTexCoord2f(u, v); glVertex2f(bw, 0);
-        glTexCoord2f(u, 0); glVertex2f(bw, bh);
-        glTexCoord2f(0, 0); glVertex2f(0,  bh);
+        glTexCoord2f(0, v); glVertex2f(dx,      dy);
+        glTexCoord2f(u, v); glVertex2f(dx + dw, dy);
+        glTexCoord2f(u, 0); glVertex2f(dx + dw, dy + dh);
+        glTexCoord2f(0, 0); glVertex2f(dx,      dy + dh);
     glEnd();
 
     [[self openGLContext] flushBuffer];
@@ -164,8 +190,17 @@ static unsigned int nextPow2(unsigned int v) {
     NSString* chars = [event charactersIgnoringModifiers];
     if ([chars length] > 0) {
         unichar c = [chars characterAtIndex:0];
-        if (c == 'q' || c == 'Q' || c == 27 /* Esc */) {
-            [[self window] close];
+        if (c == 'f' || c == 'F') {
+            [controller toggleFullscreen];
+            return;
+        }
+        if (c == 27 /* Esc */) {
+            /* Exit fullscreen if fullscreen; close otherwise. */
+            [controller handleEscape];
+            return;
+        }
+        if (c == 'q' || c == 'Q') {
+            [controller closePlayer];
             return;
         }
     }

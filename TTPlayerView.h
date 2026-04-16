@@ -13,6 +13,8 @@
 #import <OpenGL/gl.h>
 #import "TigerCompat.h"
 
+@class TTPlayerWindowController;
+
 @interface TTPlayerView : NSOpenGLView {
     GLuint tex;
     BOOL glReady;
@@ -20,9 +22,13 @@
     unsigned int srcH;     /* actual video height */
     unsigned int texW;     /* power-of-2 texture width */
     unsigned int texH;     /* power-of-2 texture height */
+    TTPlayerWindowController* controller; /* weak; set by controller */
 }
 
 - (id)initWithFrame:(NSRect)frame;
+
+/* Back-pointer for routing key events (f = fullscreen, ESC, q). */
+- (void)setController:(TTPlayerWindowController*)c;
 
 /* Call once when the video sequence header arrives. */
 - (void)setupTextureWithWidth:(unsigned int)w height:(unsigned int)h;

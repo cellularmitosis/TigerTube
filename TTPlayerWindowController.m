@@ -4,11 +4,24 @@
 //
 
 #import "TTPlayerWindowController.h"
+#import <Carbon/Carbon.h> /* SetSystemUIMode */
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <curl/curl.h>
+
+/* Borderless NSWindow subclass that's allowed to become key.
+   Default NSWindow returns NO from -canBecomeKeyWindow for borderless
+   style, which would leave -makeKeyAndOrderFront: a no-op and starve
+   our fullscreen view of keyDown: events. */
+@interface TTFullscreenWindow : NSWindow
+@end
+
+@implementation TTFullscreenWindow
+- (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+@end
 
 /* Wall-clock seconds since the epoch. */
 static double ttWallSec(void) {
@@ -90,6 +103,8 @@ static void* audioThreadFunc(void* arg);
         audioStreamDone = NO;
         stopRequested = NO;
         displayTimer = nil;
+        fullscreenWindow = nil;
+        isFullscreen = NO;
 
         framesDisplayed = 0;
         framesDropped = 0;
@@ -117,13 +132,14 @@ static void* audioThreadFunc(void* arg);
 }
 
 - (void)dealloc {
-    [self stop];
+    [self stop]; /* also exits fullscreen if needed */
     [videoDecoder release];
     [audioPlayer release];
     [videoURL release];
     [audioURL release];
     [videoTitle release];
     [window release];
+    [fullscreenWindow release]; /* usually nil; safety net */
     {
         int i;
         for (i = 0; i < TT_FRAME_QUEUE_SIZE; i++) {
@@ -158,12 +174,110 @@ static void* audioThreadFunc(void* arg);
 
     playerView = [[TTPlayerView alloc] initWithFrame:cb];
     [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+    [playerView setController:self];
     [content addSubview:playerView];
     [playerView release]; /* retained by superview */
 
     [window makeKeyAndOrderFront:nil];
-    /* Make the player view first responder so keyDown: (q = quit) fires. */
+    /* Make the player view first responder so keyDown: (f, ESC, q) fires. */
     [window makeFirstResponder:playerView];
+}
+
+#pragma mark - Fullscreen
+
+/* Enter/exit fullscreen by moving the single playerView between the
+   titled window and a borderless screen-sized window.  The GL context
+   (and its uploaded texture) belong to the view, so they ride along
+   across the move; an -[NSOpenGLContext update] after re-parenting
+   rebinds the drawable to the new window's surface. */
+
+- (void)enterFullscreen {
+    if (isFullscreen) {
+        return;
+    }
+
+    NSRect screenFrame = [[window screen] frame];
+    fullscreenWindow = [[TTFullscreenWindow alloc]
+                            initWithContentRect:screenFrame
+                                      styleMask:NSBorderlessWindowMask
+                                        backing:NSBackingStoreBuffered
+                                          defer:NO];
+    [fullscreenWindow setBackgroundColor:[NSColor blackColor]];
+    [fullscreenWindow setLevel:NSScreenSaverWindowLevel];
+    [fullscreenWindow setReleasedWhenClosed:NO];
+    [fullscreenWindow setDelegate:self];
+
+    /* Hide menu bar + Dock.  Carbon call; Cocoa's equivalent
+       (NSApplicationPresentationHideMenuBar) is 10.6+. */
+    SetSystemUIMode(kUIModeAllHidden, 0);
+
+    /* Re-parent playerView.  Retain across removeFromSuperview
+       because the titled window's content view is its current owner. */
+    [playerView retain];
+    [playerView removeFromSuperview];
+    NSView* fsContent = [fullscreenWindow contentView];
+    [playerView setFrame:[fsContent bounds]];
+    [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+    [fsContent addSubview:playerView];
+    [playerView release]; /* now retained by fsContent */
+    [[playerView openGLContext] update];
+    [playerView reshape]; /* rebind glViewport/glOrtho to new size */
+
+    [fullscreenWindow makeKeyAndOrderFront:nil];
+    [fullscreenWindow makeFirstResponder:playerView];
+    isFullscreen = YES;
+}
+
+- (void)exitFullscreen {
+    if (!isFullscreen) {
+        return;
+    }
+
+    [playerView retain];
+    [playerView removeFromSuperview];
+    NSView* wContent = [window contentView];
+    [playerView setFrame:[wContent bounds]];
+    [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+    [wContent addSubview:playerView];
+    [playerView release]; /* now retained by wContent */
+    [[playerView openGLContext] update];
+    [playerView reshape]; /* rebind glViewport/glOrtho to new size */
+
+    [fullscreenWindow orderOut:nil];
+    [fullscreenWindow release];
+    fullscreenWindow = nil;
+
+    SetSystemUIMode(kUIModeNormal, 0);
+
+    [window makeKeyAndOrderFront:nil];
+    [window makeFirstResponder:playerView];
+    isFullscreen = NO;
+}
+
+- (void)toggleFullscreen {
+    if (isFullscreen) {
+        [self exitFullscreen];
+    } else {
+        [self enterFullscreen];
+    }
+}
+
+- (void)handleEscape {
+    if (isFullscreen) {
+        [self exitFullscreen];
+    } else {
+        [window close];
+    }
+}
+
+- (void)closePlayer {
+    /* 'q' from anywhere closes the player -- restore menu bar first
+       if we're fullscreen, then close the titled window (which
+       triggers windowWillClose -> stop). */
+    if (isFullscreen) {
+        [self exitFullscreen];
+    }
+    [window close];
 }
 
 #pragma mark - Playback control
@@ -200,6 +314,13 @@ static void* audioThreadFunc(void* arg);
 }
 
 - (void)stop {
+    /* If we're tearing down while fullscreen (e.g. AppleScript quit
+       or streamDidEnd), restore the menu bar so the user isn't left
+       with hidden chrome. */
+    if (isFullscreen) {
+        [self exitFullscreen];
+    }
+
     /* Log playback stats the first time stop is called.  Guard on
        displayTimer != nil so we only log once (stop is idempotent --
        windowWillClose: and streamDidEnd: may both call it). */

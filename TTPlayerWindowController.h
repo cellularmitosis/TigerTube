@@ -34,7 +34,9 @@
     volatile BOOL stopRequested;
 @private
     NSWindow* window;              /* strong */
-    TTPlayerView* playerView;      /* weak (retained by window) */
+    TTPlayerView* playerView;      /* weak (retained by current window) */
+    NSWindow* fullscreenWindow;    /* strong, nil when windowed */
+    BOOL isFullscreen;
     NSTimer* displayTimer;         /* strong (retained by run loop) */
 
     /* Decoder -> display UYVY frame queue.  Decoder blocks on
@@ -91,6 +93,11 @@
 
 /* Stop playback and close. */
 - (void)stop;
+
+/* Key-event entry points called by TTPlayerView. */
+- (void)toggleFullscreen;
+- (void)handleEscape;
+- (void)closePlayer;
 
 @end
 
