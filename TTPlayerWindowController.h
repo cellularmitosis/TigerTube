@@ -29,6 +29,9 @@
     TTAudioPlayer* audioPlayer;    /* strong */
     NSString* videoURL;            /* strong */
     NSString* audioURL;            /* strong */
+    double startTime;              /* seconds into the video for the
+                                      current fetch batch.  Absolute
+                                      position = startTime + samplesPlayed/44100. */
     volatile BOOL videoStreamDone;
     volatile BOOL audioStreamDone;
     volatile BOOL stopRequested;
@@ -55,7 +58,8 @@
 
     /* Playback info */
     NSString* videoTitle;          /* strong */
-    double startTime;              /* seconds into the video to start */
+    volatile BOOL seeking;         /* drop repeated arrow-key presses
+                                      while a seek is still in flight */
 
     /* Frame accounting / stats */
     unsigned long framesDisplayed;   /* frames actually pushed to GL */
@@ -98,6 +102,11 @@
 - (void)toggleFullscreen;
 - (void)handleEscape;
 - (void)closePlayer;
+
+/* Seek by delta seconds relative to current audio clock position.
+   Positive = forward, negative = backward; clamps at 0.  mplayer-style
+   keyboard bindings: left/right = +/-15s, up/down = +/-60s. */
+- (void)seekBy:(double)delta;
 
 @end
 

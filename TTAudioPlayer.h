@@ -29,6 +29,7 @@
     void* audioUnit;     /* AudioUnit, typed void* to keep header clean */
     BOOL running;
     double sampleRate;
+    volatile BOOL cancelled;  /* set by -cancel; feedPCM bails */
 }
 
 /* Init with sample rate (44100) and channel count (1 or 2). */
@@ -41,8 +42,15 @@
 - (BOOL)isRunning;
 
 /* Feed raw s16be PCM from the network thread.
-   Blocks (busy-waits with usleep) if the ring is full. */
+   Blocks (busy-waits with usleep) if the ring is full.
+   Returns early if -cancel has been called. */
 - (void)feedPCM:(const unsigned char*)data length:(unsigned int)len;
+
+/* Unblock feedPCM if it's currently busy-waiting on a full ring.
+   Used by the controller during seek teardown so the network
+   thread can return from feedPCM and then exit via the curl
+   stopRequested-aborts-write-callback path.  Cleared by -reset. */
+- (void)cancel;
 
 /* Number of bytes available in the ring buffer. */
 - (unsigned int)ringAvailable;

@@ -203,6 +203,23 @@ static unsigned int nextPow2(unsigned int v) {
             [controller closePlayer];
             return;
         }
+        /* mplayer-style seek bindings. */
+        if (c == NSRightArrowFunctionKey) {
+            [controller seekBy:+15.0];
+            return;
+        }
+        if (c == NSLeftArrowFunctionKey) {
+            [controller seekBy:-15.0];
+            return;
+        }
+        if (c == NSUpArrowFunctionKey) {
+            [controller seekBy:+60.0];
+            return;
+        }
+        if (c == NSDownArrowFunctionKey) {
+            [controller seekBy:-60.0];
+            return;
+        }
     }
     [super keyDown:event];
 }

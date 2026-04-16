@@ -97,9 +97,29 @@
 }
 
 - (void)reset {
+    /* mpeg2_reset(dec, 1) in libmpeg2 0.5.1 is supposed to release
+       display buffers and restart parsing, but the mpeg2_convert hook
+       installed at init time does not survive the reset reliably --
+       the first frame after reset handed us a buf[0] pointing into an
+       unmapped page, crashing the subsequent memcpy on the network
+       thread.  Tearing down and recreating the decoder sidesteps the
+       issue and is fast enough (<1ms) that it's not a perf concern
+       for a user-initiated seek. */
     if (decoder != NULL) {
-        mpeg2_reset((mpeg2dec_t*)decoder, 1);
+        mpeg2_close((mpeg2dec_t*)decoder);
+        decoder = NULL;
     }
+    mpeg2dec_t* dec = mpeg2_init();
+    if (dec != NULL) {
+        mpeg2_convert(dec, mpeg2convert_uyvy, NULL);
+        decoder = dec;
+        info = mpeg2_info(dec);
+    } else {
+        fprintf(stderr, "TTVideoDecoder: mpeg2_init failed during reset\n");
+        info = NULL;
+    }
+    vidWidth = 0;
+    vidHeight = 0;
     sequenceReady = NO;
     framesDecoded = 0;
 }

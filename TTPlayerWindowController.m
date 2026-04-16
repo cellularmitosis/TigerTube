@@ -102,6 +102,7 @@ static void* audioThreadFunc(void* arg);
         videoStreamDone = NO;
         audioStreamDone = NO;
         stopRequested = NO;
+        seeking = NO;
         displayTimer = nil;
         fullscreenWindow = nil;
         isFullscreen = NO;
@@ -278,6 +279,125 @@ static void* audioThreadFunc(void* arg);
         [self exitFullscreen];
     }
     [window close];
+}
+
+- (void)seekBy:(double)delta {
+    /* Single-threaded: keyDown: runs on main, seekBy: is synchronous
+       on main, so another arrow press can't arrive mid-seek.  The
+       'seeking' flag is belt-and-suspenders for any future async
+       caller. */
+    if (seeking) {
+        return;
+    }
+    if (audioPlayer == nil || videoDecoder == nil) {
+        return;
+    }
+    seeking = YES;
+
+    double current = startTime + (double)[audioPlayer samplesPlayed] / 44100.0;
+    double target = current + delta;
+    if (target < 0) {
+        target = 0;
+    }
+    fprintf(stderr, "seek: %.2fs -> %.2fs (delta=%+.0fs)\n",
+            current, target, delta);
+
+    /* ---- Signal the fetch threads to exit. ----
+       Three wake-up paths, one per place a thread might be blocked:
+       - stopRequested: curl write callbacks return 0 on next call,
+         causing curl_easy_perform to return CURLE_WRITE_ERROR
+       - audioPlayer cancel: unsticks feedPCM if it's busy-waiting on
+         a full ring (it is, whenever the ring has filled before seek)
+       - queueNotFull broadcast: unsticks video decoder's delegate
+         callback if it's blocked on a full frame queue
+       NOTE: do NOT stop the audio unit here.  The render callback
+       needs to keep draining the ring so feedPCM can make progress
+       after being cancelled -- otherwise the old chunk it's mid-way
+       through writing would still wedge.  We reset the unit below
+       after the thread has confirmed exit. */
+    stopRequested = YES;
+    [audioPlayer cancel];
+    pthread_mutex_lock(&queueMutex);
+    pthread_cond_broadcast(&queueNotFull);
+    pthread_mutex_unlock(&queueMutex);
+    if (displayTimer != nil) {
+        [displayTimer invalidate];
+        displayTimer = nil;
+    }
+
+    /* Wait for both curl threads to exit.  With the three wake-up
+       signals above, this is typically <100ms.  5s cap is a
+       defensive backstop -- if we ever hit it, starting new fetch
+       threads would race the zombies on the shared frame queue and
+       ring buffer, so we abort playback entirely instead. */
+    double waitStart = ttWallSec();
+    while (!(videoStreamDone && audioStreamDone)) {
+        if (ttWallSec() - waitStart > 5.0) {
+            fprintf(stderr,
+                "seek: ABORT -- fetch threads didn't exit in 5s "
+                "(v=%d a=%d); closing player to avoid producer race\n",
+                (int)videoStreamDone, (int)audioStreamDone);
+            seeking = NO;
+            [self closePlayer];
+            return;
+        }
+        usleep(20000); /* 20 ms */
+    }
+    fprintf(stderr, "seek: fetch threads exited in %.2fs\n",
+            ttWallSec() - waitStart);
+
+    /* ---- Reset decoder + audio + frame queue. ---- */
+    [audioPlayer reset]; /* also clears the cancel flag */
+    [videoDecoder reset];
+    pthread_mutex_lock(&queueMutex);
+    queueHead = 0;
+    queueTail = 0;
+    queueCount = 0;
+    pthread_mutex_unlock(&queueMutex);
+
+    /* Keep texSetup = YES: dimensions haven't changed, the GL texture
+       is still valid.  The window is also correctly sized. */
+
+    /* Reset first-event diagnostics and the stats window baselines so
+       the next printout doesn't show wrap-around deltas (framesDecoded
+       just went back to 0). */
+    firstDecodeLogged = NO;
+    firstDisplayLogged = NO;
+    statsWallLast = ttWallSec();
+    statsCpuLast = ttCpuSec();
+    statsDecLast = 0;
+    statsDispLast = framesDisplayed;
+    tickLastWall = 0;
+    tickCount = 0;
+    tickIntervalSum = 0;
+    tickIntervalMax = 0;
+    glTimeSum = 0;
+    glTimeMax = 0;
+    glTickCount = 0;
+    otherTimeSum = 0;
+
+    /* ---- Relaunch fetch at the new position. ---- */
+    startTime = target;
+    stopRequested = NO;
+    videoStreamDone = NO;
+    audioStreamDone = NO;
+
+    [self retain];
+    [self retain];
+
+    pthread_t videoTid, audioTid;
+    pthread_create(&videoTid, NULL, videoThreadFunc, self);
+    pthread_detach(videoTid);
+    pthread_create(&audioTid, NULL, audioThreadFunc, self);
+    pthread_detach(audioTid);
+
+    displayTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+                                                    target:self
+                                                  selector:@selector(displayTimerFired:)
+                                                  userInfo:nil
+                                                   repeats:YES];
+
+    seeking = NO;
 }
 
 #pragma mark - Playback control
@@ -654,8 +774,16 @@ static void* videoThreadFunc(void* arg) {
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     TTPlayerWindowController* ctrl = (TTPlayerWindowController*)arg;
 
+    /* Append &t=T for seek.  Ignore t=0 to avoid proxy's HLS quirk
+       (see build_video_cmd in tigertube-proxy.py). */
+    NSString* fetchURL = ctrl->videoURL;
+    if (ctrl->startTime > 0) {
+        fetchURL = [NSString stringWithFormat:@"%@&t=%.2f",
+                              ctrl->videoURL, ctrl->startTime];
+    }
+
     fprintf(stderr, "video thread: starting fetch: %s\n",
-            [ctrl->videoURL UTF8String]);
+            [fetchURL UTF8String]);
 
     CURL* curl = curl_easy_init();
     if (curl == NULL) {
@@ -668,7 +796,7 @@ static void* videoThreadFunc(void* arg) {
 
     NSString* caPath = [[NSBundle mainBundle] pathForResource:@"cacert"
                                                        ofType:@"pem"];
-    curl_easy_setopt(curl, CURLOPT_URL, [ctrl->videoURL UTF8String]);
+    curl_easy_setopt(curl, CURLOPT_URL, [fetchURL UTF8String]);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteVideo);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctrl);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -696,8 +824,14 @@ static void* audioThreadFunc(void* arg) {
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     TTPlayerWindowController* ctrl = (TTPlayerWindowController*)arg;
 
+    NSString* fetchURL = ctrl->audioURL;
+    if (ctrl->startTime > 0) {
+        fetchURL = [NSString stringWithFormat:@"%@&t=%.2f",
+                              ctrl->audioURL, ctrl->startTime];
+    }
+
     fprintf(stderr, "audio thread: starting fetch: %s\n",
-            [ctrl->audioURL UTF8String]);
+            [fetchURL UTF8String]);
 
     CURL* curl = curl_easy_init();
     if (curl == NULL) {
@@ -710,7 +844,7 @@ static void* audioThreadFunc(void* arg) {
 
     NSString* caPath = [[NSBundle mainBundle] pathForResource:@"cacert"
                                                        ofType:@"pem"];
-    curl_easy_setopt(curl, CURLOPT_URL, [ctrl->audioURL UTF8String]);
+    curl_easy_setopt(curl, CURLOPT_URL, [fetchURL UTF8String]);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteAudio);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctrl);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);

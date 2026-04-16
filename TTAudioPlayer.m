@@ -92,6 +92,7 @@ static OSStatus renderCallback(
         ringRd = 0;
         samplesOut = 0;
         running = NO;
+        cancelled = NO;
         audioUnit = NULL;
         memset(ring, 0, TT_AUDIO_RING_SIZE);
 
@@ -213,6 +214,9 @@ static OSStatus renderCallback(
 - (void)feedPCM:(const unsigned char*)data length:(unsigned int)len {
     unsigned int written = 0;
     while (written < len) {
+        if (cancelled) {
+            return;
+        }
         unsigned int free = TT_AUDIO_RING_SIZE - ring_avail(ringWr, ringRd);
         if (free == 0) {
             usleep(1000);
@@ -230,6 +234,10 @@ static OSStatus renderCallback(
         ringWr = wr + chunk;
         written += chunk;
     }
+}
+
+- (void)cancel {
+    cancelled = YES;
 }
 
 - (unsigned int)ringAvailable {
@@ -252,6 +260,7 @@ static OSStatus renderCallback(
     ringWr = 0;
     ringRd = 0;
     samplesOut = 0;
+    cancelled = NO;
     memset(ring, 0, TT_AUDIO_RING_SIZE);
     if (wasRunning) {
         [self start];
