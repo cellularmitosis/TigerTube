@@ -6,6 +6,7 @@
 #import "AppController.h"
 #import "YTClient.h"
 #import "NSString+.h"
+#import "ResultCell.h"
 #import "Secrets.h"
 #include <curl/curl.h>
 
@@ -117,15 +118,16 @@
 
     NSTableView* tv = [[NSTableView alloc] initWithFrame:[[sv contentView] bounds]];
     [tv setAllowsColumnResizing:YES];
-    [tv setAllowsColumnReordering:YES];
+    [tv setAllowsColumnReordering:NO];
     [tv setAllowsMultipleSelection:NO];
     /* 320x180 medium thumbnails displayed at 1:1; 184px row leaves a
      * 2px gap top/bottom. */
     [tv setRowHeight:184.0f];
+    /* No column headers -- both columns are unlabeled. */
+    [tv setHeaderView:nil];
 
     /* Thumbnail column -- image cell, fixed 320px to match native. */
     NSTableColumn* thumbCol = [[NSTableColumn alloc] initWithIdentifier:@"thumb"];
-    [[thumbCol headerCell] setStringValue:@""];
     [thumbCol setWidth:320.0f];
     [thumbCol setMinWidth:320.0f];
     [thumbCol setMaxWidth:320.0f];
@@ -137,28 +139,16 @@
     [tv addTableColumn:thumbCol];
     [thumbCol release];
 
-    NSTableColumn* durCol = [[NSTableColumn alloc] initWithIdentifier:@"duration"];
-    [[durCol headerCell] setStringValue:@"Length"];
-    [durCol setWidth:64.0f];
-    [durCol setMinWidth:48.0f];
-    [durCol setMaxWidth:100.0f];
-    [[durCol dataCell] setAlignment:NSRightTextAlignment];
-    [tv addTableColumn:durCol];
-    [durCol release];
-
-    NSTableColumn* titleCol = [[NSTableColumn alloc] initWithIdentifier:@"title"];
-    [[titleCol headerCell] setStringValue:@"Title"];
-    [titleCol setWidth:420.0f];
-    [titleCol setMinWidth:180.0f];
-    [tv addTableColumn:titleCol];
-    [titleCol release];
-
-    NSTableColumn* chanCol = [[NSTableColumn alloc] initWithIdentifier:@"channel"];
-    [[chanCol headerCell] setStringValue:@"Channel"];
-    [chanCol setWidth:180.0f];
-    [chanCol setMinWidth:100.0f];
-    [tv addTableColumn:chanCol];
-    [chanCol release];
+    /* Info column -- custom cell draws title/channel/duration/views
+     * stacked vertically.  Takes the rest of the row. */
+    NSTableColumn* infoCol = [[NSTableColumn alloc] initWithIdentifier:@"info"];
+    [infoCol setWidth:560.0f];
+    [infoCol setMinWidth:240.0f];
+    ResultCell* infoCell = [[ResultCell alloc] init];
+    [infoCol setDataCell:infoCell];
+    [infoCell release];
+    [tv addTableColumn:infoCol];
+    [infoCol release];
 
     [tv setDataSource:self];
     [tv setDelegate:self];
@@ -210,14 +200,15 @@
 - (void)searchDidFinish:(NSArray*)newResults {
     if (newResults != nil) {
         [results removeAllObjects];
-        /* Pre-decode titles/channels and pre-format duration so the cell
-         * data source is a pure lookup. */
+        /* Pre-decode titles/channels and pre-format duration and view
+         * count so the cell data source is a pure lookup. */
         NSEnumerator* e = [newResults objectEnumerator];
         NSMutableDictionary* row;
         while ((row = [e nextObject]) != nil) {
             NSString* title = [row objectForKey:@"title"];
             NSString* channel = [row objectForKey:@"channelTitle"];
             NSString* duration = [row objectForKey:@"duration"];
+            NSString* viewCount = [row objectForKey:@"viewCount"];
             if (title != nil) {
                 [row setObject:[title htmlDecoded] forKey:@"title"];
             }
@@ -227,6 +218,10 @@
             if (duration != nil) {
                 [row setObject:[duration iso8601DurationDisplay]
                         forKey:@"duration"];
+            }
+            if (viewCount != nil) {
+                [row setObject:[viewCount viewCountDisplay]
+                        forKey:@"viewCountDisplay"];
             }
             [results addObject:row];
         }
@@ -260,17 +255,10 @@
         NSString* url = [item objectForKey:@"thumbnailURL"];
         return [thumbCache imageForVideoId:vid url:url];
     }
-    if ([ident isEqualToString:@"duration"]) {
-        NSString* d = [item objectForKey:@"duration"];
-        return d != nil ? d : @"";
-    }
-    if ([ident isEqualToString:@"title"]) {
-        NSString* t = [item objectForKey:@"title"];
-        return t != nil ? t : @"";
-    }
-    if ([ident isEqualToString:@"channel"]) {
-        NSString* c = [item objectForKey:@"channelTitle"];
-        return c != nil ? c : @"";
+    if ([ident isEqualToString:@"info"]) {
+        /* ResultCell reads title/channelTitle/duration/viewCountDisplay
+         * directly off the dict. */
+        return item;
     }
     return @"";
 }

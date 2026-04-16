@@ -184,10 +184,10 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
         return results;
     }
 
-    /* --- /videos: fetch durations for all ids in one call --- */
+    /* --- /videos: fetch durations + view counts for all ids in one call --- */
     NSString* idsCSV = [videoIds componentsJoinedByString:@","];
     NSString* videosURL = [NSString stringWithFormat:
-        @"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=%@&key=%@",
+        @"https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=%@&key=%@",
         idsCSV, apiKey];
 
     size_t videosBytes = 0;
@@ -214,15 +214,25 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
     }
 
     NSMutableDictionary* durations = [NSMutableDictionary dictionary];
+    NSMutableDictionary* viewCounts = [NSMutableDictionary dictionary];
     NSEnumerator* vitemEnum = [videoItems objectEnumerator];
     NSDictionary* vitem;
     while ((vitem = [vitemEnum nextObject]) != nil) {
         NSString* vid = [vitem objectForKey:@"id"];
+        if (vid == nil) continue;
         NSDictionary* details = [vitem objectForKey:@"contentDetails"];
-        if (vid == nil || ![details isKindOfClass:[NSDictionary class]]) continue;
-        NSString* duration = [details objectForKey:@"duration"];
-        if (duration != nil) {
-            [durations setObject:duration forKey:vid];
+        if ([details isKindOfClass:[NSDictionary class]]) {
+            NSString* duration = [details objectForKey:@"duration"];
+            if (duration != nil) {
+                [durations setObject:duration forKey:vid];
+            }
+        }
+        NSDictionary* stats = [vitem objectForKey:@"statistics"];
+        if ([stats isKindOfClass:[NSDictionary class]]) {
+            NSString* views = [stats objectForKey:@"viewCount"];
+            if (views != nil) {
+                [viewCounts setObject:views forKey:vid];
+            }
         }
     }
 
@@ -233,6 +243,10 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
         NSString* duration = [durations objectForKey:vid];
         if (duration != nil) {
             [row setObject:duration forKey:@"duration"];
+        }
+        NSString* views = [viewCounts objectForKey:vid];
+        if (views != nil) {
+            [row setObject:views forKey:@"viewCount"];
         }
     }
 

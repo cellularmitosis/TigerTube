@@ -21,6 +21,7 @@
 		2B4C4AB22F860000000001AA /* NSString+.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4AB12F860000000001AA /* NSString+.m */; };
 		2B4C4AB52F860000000001AA /* AppController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4AB42F860000000001AA /* AppController.m */; };
 		2B4C4AC22F870000000001AA /* ThumbnailCache.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4AC12F870000000001AA /* ThumbnailCache.m */; };
+		2B4C4AD22F880000000001AA /* ResultCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4AD12F880000000001AA /* ResultCell.m */; };
 		8D11072A0486CEB800E47090 /* MainMenu.nib in Resources */ = {isa = PBXBuildFile; fileRef = 29B97318FDCFA39411CA2CEA /* MainMenu.nib */; };
 		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
 		8D11072D0486CEB800E47090 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 29B97316FDCFA39411CA2CEA /* main.m */; settings = {ATTRIBUTES = (); }; };
@@ -65,6 +66,8 @@
 		2B4C4AB42F860000000001AA /* AppController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppController.m; sourceTree = "<group>"; };
 		2B4C4AC02F870000000001AA /* ThumbnailCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThumbnailCache.h; sourceTree = "<group>"; };
 		2B4C4AC12F870000000001AA /* ThumbnailCache.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ThumbnailCache.m; sourceTree = "<group>"; };
+		2B4C4AD02F880000000001AA /* ResultCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ResultCell.h; sourceTree = "<group>"; };
+		2B4C4AD12F880000000001AA /* ResultCell.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ResultCell.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +157,8 @@
 				2B4C4AB42F860000000001AA /* AppController.m */,
 				2B4C4AC02F870000000001AA /* ThumbnailCache.h */,
 				2B4C4AC12F870000000001AA /* ThumbnailCache.m */,
+				2B4C4AD02F880000000001AA /* ResultCell.h */,
+				2B4C4AD12F880000000001AA /* ResultCell.m */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 			);
 			name = "Other Sources";
@@ -257,6 +262,7 @@
 				2B4C4AB22F860000000001AA /* NSString+.m in Sources */,
 				2B4C4AB52F860000000001AA /* AppController.m in Sources */,
 				2B4C4AC22F870000000001AA /* ThumbnailCache.m in Sources */,
+				2B4C4AD22F880000000001AA /* ResultCell.m in Sources */,
 				2B4C481D2F8324CD00B5DE08 /* NSObject+SBJSON.m in Sources */,
 				2B4C481E2F8324CD00B5DE08 /* NSString+SBJSON.m in Sources */,
 				2B4C481F2F8324CD00B5DE08 /* SBJSON.m in Sources */,

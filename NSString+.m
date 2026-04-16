@@ -114,4 +114,37 @@
     return [NSString stringWithFormat:@"%d:%02d", minutes, seconds];
 }
 
+- (NSString*)viewCountDisplay {
+    /* Parse as double; we only care about 2-3 sig figs for display, so
+     * precision loss above ~10^15 doesn't matter -- and double handles
+     * the full range of YouTube view counts where unsigned long (32-bit
+     * on ppc Tiger) would overflow around 4.3B. */
+    double n = [self doubleValue];
+    if (n < 0.0) {
+        n = 0.0;
+    }
+
+    NSString* count;
+    if (n < 1000.0) {
+        count = [NSString stringWithFormat:@"%.0f", n];
+    } else if (n < 10000.0) {
+        count = [NSString stringWithFormat:@"%.1fK", n / 1000.0];
+    } else if (n < 1000000.0) {
+        count = [NSString stringWithFormat:@"%.0fK", n / 1000.0];
+    } else if (n < 10000000.0) {
+        count = [NSString stringWithFormat:@"%.1fM", n / 1000000.0];
+    } else if (n < 1000000000.0) {
+        count = [NSString stringWithFormat:@"%.0fM", n / 1000000.0];
+    } else if (n < 10000000000.0) {
+        count = [NSString stringWithFormat:@"%.1fB", n / 1000000000.0];
+    } else {
+        count = [NSString stringWithFormat:@"%.0fB", n / 1000000000.0];
+    }
+
+    if (n == 1.0) {
+        return @"1 view";
+    }
+    return [NSString stringWithFormat:@"%@ views", count];
+}
+
 @end

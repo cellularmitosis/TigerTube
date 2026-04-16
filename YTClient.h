@@ -3,7 +3,8 @@
 //  TigerTube
 //
 //  Minimal YouTube Data API v3 client.  Performs a /search query followed
-//  by a batched /videos contentDetails call so each row has a duration.
+//  by a batched /videos contentDetails+statistics call so each row has a
+//  duration and view count.
 //
 
 #ifndef YT_CLIENT_H
@@ -26,7 +27,9 @@
 //   videoId       NSString
 //   title         NSString
 //   channelTitle  NSString
+//   thumbnailURL  NSString -- may be absent
 //   duration      NSString (ISO 8601, e.g. "PT3M45S") -- may be absent
+//   viewCount     NSString (decimal, e.g. "12345678") -- may be absent
 // Returns nil on error.  Prints per-phase timing to stderr.
 - (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults;
 
