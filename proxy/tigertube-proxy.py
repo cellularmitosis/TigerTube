@@ -113,13 +113,22 @@ def build_video_cmd(source, t, w, h, br, fps, g):
     video frozen on the first frame for 5s while audio plays
     normally, and motion only resumes at output-time ~5s.  Rebasing
     PTS to zero before fps= makes output-PTS and input-PTS align.
+
+    `-ss` is omitted entirely when t==0.  ffmpeg's HLS demuxer (which
+    is what we get for YouTube format 301) logs "could not seek to
+    position 0.000" for `-ss 0` and compensates by advancing past the
+    first segment -- we lose the first ~5s of content.  Without `-ss`
+    the demuxer just starts at the natural beginning.
     """
-    return [
+    cmd = [
         "ffmpeg",
         "-nostdin",
         "-hide_banner",
         "-loglevel", "warning",
-        "-ss", f"{t}",
+    ]
+    if t > 0:
+        cmd += ["-ss", f"{t}"]
+    cmd += [
         "-i", source,
         "-an",
         "-sn",
@@ -137,15 +146,23 @@ def build_video_cmd(source, t, w, h, br, fps, g):
         "-f", "mpeg1video",
         "pipe:1",
     ]
+    return cmd
 
 def build_audio_cmd(source, t, rate, ch):
-    """Build an ffmpeg command emitting raw s16be PCM on stdout."""
-    return [
+    """Build an ffmpeg command emitting raw s16be PCM on stdout.
+
+    `-ss` omitted when t==0; see build_video_cmd comment for the HLS
+    demuxer's "could not seek to position 0.000" misbehavior.
+    """
+    cmd = [
         "ffmpeg",
         "-nostdin",
         "-hide_banner",
         "-loglevel", "warning",
-        "-ss", f"{t}",
+    ]
+    if t > 0:
+        cmd += ["-ss", f"{t}"]
+    cmd += [
         "-i", source,
         "-vn",
         "-sn",
@@ -156,6 +173,7 @@ def build_audio_cmd(source, t, rate, ch):
         "-f", "s16be",
         "pipe:1",
     ]
+    return cmd
 
 # --- streaming response helper ---
 
