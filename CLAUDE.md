@@ -69,7 +69,8 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
 - `proxy/tigertube-proxy.py` — Flask transcoding proxy (modern host)
 - `run_and_log.sh` — on imacg3, wrapper around the binary that
   captures stderr
-- `docs/` — design notes and postmortems; not shipped
+- `docs/` — design notes and postmortems (see "Feature workflow"
+  below); not shipped
 
 ## Code conventions
 
@@ -152,6 +153,27 @@ ring is saturated.
   archive-mode rsync preserves source mtimes. If a `.h` change doesn't
   trigger recompilation, `ssh imacg3 "touch tmp/TigerTube/Foo.h"` and
   rebuild.
+
+## Feature workflow
+
+Non-trivial features follow a plan → implement → postmortem flow, one
+Claude session per phase, so no single session has to hold the whole
+thing in context:
+
+- `docs/features/<slug>/plan.md` — written first, before any code. Goals,
+  files touched, ordered steps, design rationale for non-obvious calls,
+  validation checklist. Self-contained enough that a fresh session can
+  pick it up cold.
+- `docs/features/<slug>/postmortem.md` — written after the feature lands.
+  What actually shipped vs. the plan, surprises, what to do differently.
+- When asked to "plan a feature," write `plan.md` in a new
+  `docs/features/<slug>/` directory and stop there. Don't start
+  implementing in the same session.
+- When asked to "implement" a feature with an existing `plan.md`, follow
+  the plan; deviate only when the plan is wrong, and note the deviation
+  for the postmortem.
+- Bug postmortems (not feature-paired) can live at `docs/` root or under
+  `docs/postmortems/` — not under `docs/features/`.
 
 ## Release workflow
 
