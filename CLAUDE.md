@@ -175,6 +175,11 @@ thing in context:
 - Bug postmortems (not feature-paired) can live at `docs/` root or under
   `docs/postmortems/` — not under `docs/features/`.
 
+## Git workflow
+
+- "Commit this" and "push this up" both mean commit *and* push. Don't
+  leave unpushed local commits unless the user explicitly asks you to.
+
 ## Release workflow
 
 Tagged releases live on GitHub as `vX.Y` with a `TigerTube-X.Y.zip`
