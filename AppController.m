@@ -250,7 +250,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     float rowY = cb.size.height - 2 * margin - searchH - controlsH;
     float x = margin;
 
-    float resLabelW = 90.0f;
+    float resLabelW = 78.0f;
     NSTextField* resLabel = [[NSTextField alloc] initWithFrame:
         NSMakeRect(x, rowY, resLabelW, controlsH)];
     [resLabel setStringValue:@"Resolution:"];
@@ -277,7 +277,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     [resPop release];
     x += resPopW + 20.0f; /* gap before next label */
 
-    float qLabelW = 60.0f;
+    float qLabelW = 52.0f;
     NSTextField* qLabel = [[NSTextField alloc] initWithFrame:
         NSMakeRect(x, rowY, qLabelW, controlsH)];
     [qLabel setStringValue:@"Quality:"];
