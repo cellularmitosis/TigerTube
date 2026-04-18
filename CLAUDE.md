@@ -51,6 +51,12 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
 - The proxy runs on **uranium** (this laptop), advertised over mDNS as
   `_tigertube-proxy._tcp` on port 5002. The client auto-discovers it;
   there is no hardcoded IP to update.
+- **UI iteration — use `screencapture` on imacg3 and scp the PNG back.**
+  `ssh imacg3 "screencapture -x /tmp/f.png" && scp imacg3:/tmp/f.png /tmp/f.png`
+  plus `Read /tmp/f.png` lets the agent see the current window state
+  directly. Faster than describing alignment issues in prose and catches
+  problems like non-centered labels or truncated popup titles on the
+  first look.
 
 ## Repo layout
 
