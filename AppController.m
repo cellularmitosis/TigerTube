@@ -740,9 +740,14 @@ static const int TT_AUDIO_CHANNELS = 2;
         return;
     }
 
-    /* Stop any existing player. */
+    /* Close any existing player window before opening a new one.
+       -stop on its own halts playback but leaves the NSWindow ordered
+       front (AppKit retains it), so the old window would stick around
+       with a dangling delegate pointer after we release the controller.
+       -closePlayer exits fullscreen if needed and calls -[window close],
+       which triggers windowWillClose: -> stop via the delegate path. */
     if (playerController != nil) {
-        [playerController stop];
+        [playerController closePlayer];
         [playerController release];
         playerController = nil;
     }
