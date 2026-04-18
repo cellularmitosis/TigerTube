@@ -12,6 +12,13 @@
 #import <Cocoa/Cocoa.h>
 #import "TigerCompat.h"
 
+/* Skip modes for setSkipMode:.  Values match libmpeg2's MPEG2_SKIP_*
+   constants so the wrapper is a straight passthrough -- we expose our
+   own names here so callers don't need to pull in mpeg2.h. */
+#define TT_SKIP_NONE 0  /* decode everything (default) */
+#define TT_SKIP_B    1  /* skip B frames */
+#define TT_SKIP_PB   3  /* skip P and B; decode I only */
+
 @class TTVideoDecoder;
 
 @protocol TTVideoDecoderDelegate
@@ -44,6 +51,10 @@
 
 /* Reset decoder state (call after a seek). */
 - (void)reset;
+
+/* Tell libmpeg2 which picture types to skip.  Pass TT_SKIP_NONE /
+   TT_SKIP_B / TT_SKIP_PB.  Cheap; safe to call mid-stream. */
+- (void)setSkipMode:(int)mode;
 
 - (unsigned int)width;
 - (unsigned int)height;

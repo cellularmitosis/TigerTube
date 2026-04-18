@@ -12,6 +12,14 @@
 #include <sys/time.h>
 #include <curl/curl.h>
 
+/* Hysteresis thresholds for skip-decode (see plan:
+   docs/features/skip-decode/plan.md).  Engage SKIP_PB when we're this
+   far behind the audio clock; disengage when we've caught back up to
+   within the lower band.  The gap keeps the mode toggles spaced out
+   (a few seconds apart) instead of flickering every tick. */
+static const double TT_SKIP_ENGAGE_LAG = 0.5;
+static const double TT_SKIP_DISENGAGE_LAG = 0.1;
+
 /* Borderless NSWindow subclass that's allowed to become key.
    Default NSWindow returns NO from -canBecomeKeyWindow for borderless
    style, which would leave -makeKeyAndOrderFront: a no-op and starve
@@ -179,6 +187,8 @@ static void* audioThreadFunc(void* arg);
         glTimeMax = 0;
         glTickCount = 0;
         otherTimeSum = 0;
+
+        decoderSkipMode = TT_SKIP_NONE;
 
         [self buildWindow];
     }
@@ -554,6 +564,10 @@ static void* audioThreadFunc(void* arg);
     /* ---- Reset decoder + audio + frame queue. ---- */
     [audioPlayer reset]; /* also clears the cancel flag */
     [videoDecoder reset];
+    /* The re-created decoder already defaults to MPEG2_SKIP_NONE -- just
+       keep our ivar honest so the next lag check sees the correct
+       starting state (and the NONE->PB transition log is accurate). */
+    decoderSkipMode = TT_SKIP_NONE;
     pthread_mutex_lock(&queueMutex);
     queueHead = 0;
     queueTail = 0;
@@ -773,6 +787,29 @@ static void* audioThreadFunc(void* arg);
         return;
     }
 
+    double decodedTime = (double)[videoDecoder framesDecoded] / fps;
+    double audioTime = (double)[audioPlayer samplesPlayed] / 44100.0;
+
+    /* Skip-decode hysteresis: if decode is falling behind audio, drop
+       libmpeg2 to I-frames-only so it can catch back up; once caught
+       up, resume full decode.  Two thresholds with a comfortable gap
+       so the mode doesn't flicker every frame.  Only transitions
+       actually call mpeg2_skip, so the log reads cleanly. */
+    double lag = audioTime - decodedTime;
+    if (decoderSkipMode == TT_SKIP_NONE && lag > TT_SKIP_ENGAGE_LAG) {
+        decoderSkipMode = TT_SKIP_PB;
+        [videoDecoder setSkipMode:TT_SKIP_PB];
+        fprintf(stderr, "player: skip engaged (PB) at lag=%.2fs "
+                "(decT=%.2fs audT=%.2fs)\n",
+                lag, decodedTime, audioTime);
+    } else if (decoderSkipMode == TT_SKIP_PB && lag < TT_SKIP_DISENGAGE_LAG) {
+        decoderSkipMode = TT_SKIP_NONE;
+        [videoDecoder setSkipMode:TT_SKIP_NONE];
+        fprintf(stderr, "player: skip disengaged at lag=%.2fs "
+                "(decT=%.2fs audT=%.2fs)\n",
+                lag, decodedTime, audioTime);
+    }
+
     /* Pace the decoder one frame at a time: keep at most ~40 ms of lead
        past the audio clock.  libmpeg2 runs at ~267 fps (11x real-time) on
        this G3, so without tight pacing it emits frames in bursts of 2-3
@@ -780,8 +817,6 @@ static void* audioThreadFunc(void* arg);
        frameBuffer loses all but the last frame in each burst, which is
        why display fps was half of decode fps.  Per-frame pacing produces
        one frame every ~42 ms, matched to the 30 Hz display timer. */
-    double decodedTime = (double)[videoDecoder framesDecoded] / fps;
-    double audioTime = (double)[audioPlayer samplesPlayed] / 44100.0;
     double targetLead = 0.040;
     if (decodedTime - audioTime > targetLead) {
         double sleepSec = decodedTime - audioTime - targetLead;

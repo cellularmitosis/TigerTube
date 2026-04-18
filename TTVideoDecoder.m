@@ -124,6 +124,12 @@
     framesDecoded = 0;
 }
 
+- (void)setSkipMode:(int)mode {
+    if (decoder != NULL) {
+        mpeg2_skip((mpeg2dec_t*)decoder, mode);
+    }
+}
+
 - (unsigned int)width {
     return vidWidth;
 }

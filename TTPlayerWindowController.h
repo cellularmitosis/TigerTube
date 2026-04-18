@@ -133,6 +133,13 @@
     double glTimeMax;                /* max displayFrame: wall time (sec) */
     unsigned int glTickCount;        /* ticks that ran displayFrame: */
     double otherTimeSum;             /* sum of non-GL tick work (sec) */
+
+    /* Skip-decode state.  When the decoder falls too far behind the
+       audio clock, we flip libmpeg2 to TT_SKIP_PB (I-frames only) so
+       it can catch up; once caught up we flip back to TT_SKIP_NONE.
+       Hysteresis thresholds live at file scope in the .m.  Decision
+       logic is in -videoDecoder:didDecodeFrame:. */
+    int decoderSkipMode;
 }
 
 /* Create and show a player window for the given video.
