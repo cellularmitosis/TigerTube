@@ -81,7 +81,22 @@
 
     /* Frame accounting / stats */
     unsigned long framesDisplayed;   /* frames actually pushed to GL */
-    unsigned long framesDropped;     /* decoded frames overwritten undisplayed */
+    unsigned long framesDropped;     /* source-timeline frames that never
+                                        reached the screen (includes both
+                                        decoder stalls and queue-overflow
+                                        drops).  Derived each display tick
+                                        from the audio clock -- see
+                                        computeDrops below. */
+    unsigned long framesDroppedBanked;   /* framesDropped value snapshotted
+                                            at the start of the current
+                                            segment (just-after-seek).
+                                            Per-segment drops are added on
+                                            top. */
+    unsigned long framesDisplayedAtSeek; /* framesDisplayed at the start of
+                                            the current segment, so the
+                                            derived drops formula can take
+                                            "displayed since seek" rather
+                                            than the cumulative. */
     double statsWall0;               /* wall time at play start */
     double statsCpu0;                /* CPU seconds at play start */
     double statsWallLast;            /* wall time of last stats log */

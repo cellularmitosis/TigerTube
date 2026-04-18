@@ -157,6 +157,8 @@ static void* audioThreadFunc(void* arg);
 
         framesDisplayed = 0;
         framesDropped = 0;
+        framesDroppedBanked = 0;
+        framesDisplayedAtSeek = 0;
         statsWall0 = 0;
         statsCpu0 = 0;
         statsWallLast = 0;
@@ -527,6 +529,13 @@ static void* audioThreadFunc(void* arg);
     fprintf(stderr, "seek: fetch threads exited in %.2fs\n",
             ttWallSec() - waitStart);
 
+    /* Bank the current segment's drops before we reset the counters
+       they're derived from, so the total carries across seeks even
+       though audioSec / queueCount / framesDisplayed-since-seek all
+       go back to zero for the next segment. */
+    framesDroppedBanked += [self currentSegmentDrops];
+    framesDropped = framesDroppedBanked;
+
     /* ---- Reset decoder + audio + frame queue. ---- */
     [audioPlayer reset]; /* also clears the cancel flag */
     [videoDecoder reset];
@@ -535,6 +544,9 @@ static void* audioThreadFunc(void* arg);
     queueTail = 0;
     queueCount = 0;
     pthread_mutex_unlock(&queueMutex);
+    /* New segment: anchor the "displayed since seek" baseline here so
+       the derived drops formula starts fresh. */
+    framesDisplayedAtSeek = framesDisplayed;
 
     /* Keep texSetup = YES: dimensions haven't changed, the GL texture
        is still valid.  The window is also correctly sized. */
@@ -663,9 +675,10 @@ static void* audioThreadFunc(void* arg);
               stride:(unsigned int)stride
 {
     /* Called on the video network thread.  Enqueue into the 3-slot
-       ring buffer; block on queueNotFull if the display timer is
-       behind.  Blocking here propagates backpressure into the curl
-       write callback -> TCP -> proxy ffmpeg. */
+       ring buffer; drop the oldest queued frame if the display timer
+       is three frames behind (see below).  The per-frame audio-clock
+       pacing sleep further down still provides soft TCP backpressure
+       to the proxy by idling this thread between frames. */
     unsigned int size = stride * h;
 
     pthread_mutex_lock(&queueMutex);
@@ -689,13 +702,22 @@ static void* audioThreadFunc(void* arg);
         queueCount = 0;
     }
 
-    /* Block while the queue is full.  stop wakes us via broadcast. */
-    while (queueCount >= TT_FRAME_QUEUE_SIZE && !stopRequested) {
-        pthread_cond_wait(&queueNotFull, &queueMutex);
-    }
     if (stopRequested) {
         pthread_mutex_unlock(&queueMutex);
         return;
+    }
+
+    /* Drop-oldest when the queue is full: overwrite the staled head
+       frame.  Previously we blocked here on queueNotFull; that kept
+       bandwidth tight (TCP backpressure to the proxy) but let video
+       fall behind audio under sustained display stalls.  The drop
+       *counter* is updated elsewhere -- in the display tick, derived
+       from the audio clock -- so that it also captures frames the
+       decoder never produced (the dominant failure mode on this G3,
+       where libmpeg2 is CPU-bound below source fps). */
+    if (queueCount >= TT_FRAME_QUEUE_SIZE) {
+        queueHead = (queueHead + 1) % TT_FRAME_QUEUE_SIZE;
+        queueCount--;
     }
 
     memcpy(frameSlots[queueTail], uyvyData, size);
@@ -749,6 +771,25 @@ static void* audioThreadFunc(void* arg);
 }
 
 #pragma mark - Display timer
+
+/* How many source frames of the current segment should have been
+   shown by now but weren't (neither on-screen nor imminent in the
+   queue).  Used by the display tick to refresh framesDropped and by
+   the seek path to bank the segment's drops before it resets. */
+- (unsigned long)currentSegmentDrops {
+    double fps = [videoDecoder fps];
+    if (fps <= 0 || audioPlayer == nil) {
+        return 0;
+    }
+    double audioSec = (double)[audioPlayer samplesPlayed] / 44100.0;
+    pthread_mutex_lock(&queueMutex);
+    unsigned int qc = queueCount;
+    pthread_mutex_unlock(&queueMutex);
+    long expected = (long)(audioSec * fps);
+    long displayedSeg = (long)framesDisplayed - (long)framesDisplayedAtSeek;
+    long drops = expected - displayedSeg - (long)qc;
+    return (drops > 0) ? (unsigned long)drops : 0;
+}
 
 - (void)displayTimerFired:(NSTimer*)timer {
     if (stopRequested) {
@@ -882,6 +923,16 @@ static void* audioThreadFunc(void* arg);
     /* Accumulate non-GL tick work (setTitle, audio-start check, etc.). */
     double tickEnd = ttWallSec();
     otherTimeSum += (tickEnd - tickStart) - thisGlTime;
+
+    /* Update derived drop count.  The audio clock tells us how many
+       source frames SHOULD be on screen by now; subtract what we've
+       shown in the current segment plus whatever is queued up for
+       imminent display, and the remainder is "dropped" in the sense
+       the viewer means: content they never saw.  That includes both
+       queue-overflow drops (handled in didDecodeFrame:) and -- more
+       importantly on this G3 -- source frames the decoder never
+       produced because libmpeg2 is CPU-bound below source fps. */
+    framesDropped = framesDroppedBanked + [self currentSegmentDrops];
 
     /* Periodic stats -- every ~0.5 seconds of wall time. */
     double nowWall = tickEnd;
