@@ -10,19 +10,21 @@
 #
 # Endpoints:
 #
-#   GET /v/yt/<youtube_id>?t=&w=&h=&br=&fps=&g=&src_h=
+#   GET /v/yt/<youtube_id>?t=&w=&h=&br=&fps=&g=
 #   GET /v/file?path=<urlenc>&t=&w=&h=&br=&fps=&g=
 #       -> raw MPEG-1 elementary video stream, no container
 #
-#   GET /a/yt/<youtube_id>?t=&rate=&ch=&src_h=
+#   GET /a/yt/<youtube_id>?t=&rate=&ch=
 #   GET /a/file?path=<urlenc>&t=&rate=&ch=
 #       -> raw big-endian PCM s16 interleaved, no header
 #
-#   GET /probe/yt/<youtube_id>?src_h=
+#   GET /probe/yt/<youtube_id>
 #   GET /probe/file?path=<urlenc>
 #       -> ffprobe JSON, for debugging
 #
-# src_h picks the YouTube source cap: 480, 720, or 1080. Default 480.
+# For yt sources the proxy derives a source-height cap from the
+# requested output height h= and asks yt-dlp for the smallest tier
+# (YT_ALLOWED_SRC_HEIGHTS) that still covers it.
 #
 #   GET /  -> tiny index page listing the endpoints
 #
@@ -79,28 +81,28 @@ _yt_cache = {}                                # id -> (url, timestamp)
 # known-good clients.
 YT_PLAYER_CLIENTS = "tv_simply,web_safari,mweb"
 
-# Source-height cap tiers the client can pick via ?src_h=.  TigerTube
-# downscales to 320x240 on the G3, so 480p is plenty for the G3 itself;
-# 720p and 1080p are there for when the same proxy serves faster
-# clients too.  Doesn't affect bot detection (that fires before format
-# selection) but lower tiers save yt-dlp response size, proxy
-# bandwidth, and ffmpeg CPU.
+# Source-height cap tiers the proxy will request from yt-dlp.  Picked
+# implicitly per request based on the client's requested output height
+# (see compute_src_height): we pull the smallest source that still
+# fully covers the output resolution, so a 320x240 G3 client never
+# pays for a 1080p download.  Doesn't affect bot detection (that fires
+# before format selection) but the cap saves yt-dlp response size,
+# proxy bandwidth, and ffmpeg CPU.  Must stay sorted ascending.
 YT_ALLOWED_SRC_HEIGHTS = (480, 720, 1080)
 YT_DEFAULT_SRC_HEIGHT = 480
 
-def parse_src_height():
-    """Read ?src_h= from the current request and clamp to the allowed
-    tiers. Anything missing or off-tier falls back to the default."""
-    raw = request.args.get("src_h")
-    if raw is None:
+def compute_src_height(requested_h):
+    """Pick the smallest allowed source tier that still covers the
+    requested output height.  Omitted or non-positive heights (and
+    audio / probe endpoints that have no output-resolution context)
+    default to the lowest tier.  Heights above the highest tier are
+    clamped -- there's nothing bigger to give them."""
+    if requested_h is None or requested_h <= 0:
         return YT_DEFAULT_SRC_HEIGHT
-    try:
-        v = int(raw)
-    except ValueError:
-        return YT_DEFAULT_SRC_HEIGHT
-    if v in YT_ALLOWED_SRC_HEIGHTS:
-        return v
-    return YT_DEFAULT_SRC_HEIGHT
+    for tier in YT_ALLOWED_SRC_HEIGHTS:
+        if requested_h <= tier:
+            return tier
+    return YT_ALLOWED_SRC_HEIGHTS[-1]
 
 def yt_resolve(youtube_id, src_h):
     """Resolve a YouTube ID to a direct googlevideo URL via yt-dlp.
@@ -418,7 +420,7 @@ def parse_audio_params():
 @app.route("/v/yt/<youtube_id>")
 def video_yt(youtube_id):
     t, w, h, br, fps, g, q, crop_arg = parse_video_params()
-    src_h = parse_src_height()
+    src_h = compute_src_height(h)
     src = resolve_source("yt", youtube_id, src_h=src_h)
     crop = resolve_crop(crop_arg, "yt", youtube_id, src)
     cmd = build_video_cmd(src, t, w, h, br, fps, g, q, crop=crop)
@@ -440,8 +442,11 @@ def video_file():
 @app.route("/a/yt/<youtube_id>")
 def audio_yt(youtube_id):
     t, rate, ch = parse_audio_params()
-    src_h = parse_src_height()
-    src = resolve_source("yt", youtube_id, src_h=src_h)
+    # Audio has no output-height context; use the default tier.  All
+    # YouTube mp4 tiers carry the same audio bitstream anyway, so this
+    # just means audio fetches may not share yt-dlp's URL cache with
+    # a concurrent higher-tier video fetch on the same id.
+    src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
     cmd = build_audio_cmd(src, t, rate, ch)
     mime = f"audio/L16; rate={rate}; channels={ch}"
     return stream_ffmpeg(cmd, mimetype=mime)
@@ -461,8 +466,7 @@ def audio_file():
 
 @app.route("/probe/yt/<youtube_id>")
 def probe_yt(youtube_id):
-    src_h = parse_src_height()
-    src = resolve_source("yt", youtube_id, src_h=src_h)
+    src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
     out = subprocess.check_output([
         "ffprobe", "-v", "error", "-show_streams", "-show_format",
         "-of", "json", src,
@@ -489,25 +493,26 @@ def index():
         "tigertube-proxy\n"
         "\n"
         "Video (raw MPEG-1 elementary stream):\n"
-        "  GET /v/yt/<id>?t=&w=&h=&br=&fps=&g=&q=&crop=&src_h=\n"
+        "  GET /v/yt/<id>?t=&w=&h=&br=&fps=&g=&q=&crop=\n"
         "  GET /v/file?path=<abs>&t=&w=&h=&br=&fps=&g=&q=&crop=\n"
         "  (q=N uses constant-quality VBR and overrides br=; 2-31, lower=better)\n"
         "  (crop=auto probes for baked pillarbox/letterbox bars; slower first frame.\n"
         "   crop=W:H:X:Y uses a literal crop rectangle. Omit for no crop.)\n"
-        "  (src_h=480|720|1080 caps the YouTube source height; yt only)\n"
         "\n"
         "Audio (raw s16be PCM):\n"
-        "  GET /a/yt/<id>?t=&rate=&ch=&src_h=\n"
+        "  GET /a/yt/<id>?t=&rate=&ch=\n"
         "  GET /a/file?path=<abs>&t=&rate=&ch=\n"
         "\n"
         "Probe (ffprobe JSON):\n"
-        "  GET /probe/yt/<id>?src_h=\n"
+        "  GET /probe/yt/<id>\n"
         "  GET /probe/file?path=<abs>\n"
         "\n"
         f"Defaults: video {V_DEFAULT_W}x{V_DEFAULT_H} @{V_DEFAULT_FPS}fps "
         f"{V_DEFAULT_BR} g={V_DEFAULT_G}; audio {A_DEFAULT_RATE}Hz "
-        f"{A_DEFAULT_CH}ch s16be; yt source cap {YT_DEFAULT_SRC_HEIGHT}p "
-        f"(allowed: {'/'.join(f'{v}p' for v in YT_ALLOWED_SRC_HEIGHTS)})\n",
+        f"{A_DEFAULT_CH}ch s16be.\n"
+        f"yt source cap is derived from h=: picks the smallest of "
+        f"{'/'.join(f'{v}p' for v in YT_ALLOWED_SRC_HEIGHTS)} that "
+        f"still covers h.  Audio/probe use {YT_DEFAULT_SRC_HEIGHT}p.\n",
         mimetype="text/plain",
     )
 

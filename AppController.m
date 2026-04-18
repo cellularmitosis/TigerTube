@@ -301,36 +301,6 @@ static const int TT_AUDIO_CHANNELS = 2;
     [content addSubview:qPop];
     qualityPopup = qPop; /* weak: retained by superview */
     [qPop release];
-    x += qPopW + 20.0f; /* gap before next label */
-
-    /* Source-height cap passed to the proxy as src_h=.  The G3 itself
-       always downscales to 320x240, so 480p source is plenty; the
-       higher tiers exist for when the same proxy serves other clients
-       too.  Whitelisted server-side (480 / 720 / 1080). */
-    float srcLabelW = 55.0f;
-    NSTextField* srcLabel = [[NSTextField alloc] initWithFrame:
-        NSMakeRect(x, rowY, srcLabelW, controlsH)];
-    [srcLabel setStringValue:@"Source:"];
-    [srcLabel setBezeled:NO];
-    [srcLabel setDrawsBackground:NO];
-    [srcLabel setEditable:NO];
-    [srcLabel setSelectable:NO];
-    [srcLabel setAutoresizingMask:NSViewMinYMargin];
-    ttCenterLabelInRow(srcLabel, rowY, controlsH, srcLabelW);
-    [content addSubview:srcLabel];
-    [srcLabel release];
-    x += srcLabelW;
-
-    float srcPopW = 85.0f;
-    NSPopUpButton* srcPop = [[NSPopUpButton alloc] initWithFrame:
-        NSMakeRect(x, rowY, srcPopW, controlsH)];
-    [srcPop addItemsWithTitles:[NSArray arrayWithObjects:
-        @"<= 480p", @"<= 720p", @"<= 1080p", nil]];
-    [srcPop selectItemWithTitle:@"<= 480p"];
-    [srcPop setAutoresizingMask:NSViewMinYMargin];
-    [content addSubview:srcPop];
-    sourcePopup = srcPop; /* weak: retained by superview */
-    [srcPop release];
 
     /* Table in a scroll view -- fills the rest, grows in both axes. */
     NSRect scrollFrame = NSMakeRect(margin,
@@ -815,29 +785,20 @@ static const int TT_AUDIO_CHANNELS = 2;
     if (qParsed >= 2 && qParsed <= 31) {
         qscale = qParsed;
     }
+    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d\n",
+            width, height, qscale);
 
-    /* Source-height cap -- must match the whitelist on the proxy.
-       Popup titles look like "<= 480p"; intValue trips on the leading
-       "<=", so scan for the canonical substrings explicitly. */
-    int srcH = 480;
-    NSString* srcTitle = [sourcePopup titleOfSelectedItem];
-    if ([srcTitle rangeOfString:@"1080"].location != NSNotFound) {
-        srcH = 1080;
-    } else if ([srcTitle rangeOfString:@"720"].location != NSNotFound) {
-        srcH = 720;
-    }
-    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d src_h=%d\n",
-            width, height, qscale, srcH);
-
+    /* src_h (YouTube source-height cap) is derived proxy-side from h=
+       so the client doesn't need to know about yt-dlp's tier list. */
     NSString* vURL = [NSString stringWithFormat:
-        @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d&src_h=%d",
+        @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d",
         proxyHost, videoId,
         width, height, qscale,
-        TT_VIDEO_FPS, TT_VIDEO_GOP, srcH];
+        TT_VIDEO_FPS, TT_VIDEO_GOP];
     NSString* aURL = [NSString stringWithFormat:
-        @"%@/a/yt/%@?rate=%d&ch=%d&src_h=%d",
+        @"%@/a/yt/%@?rate=%d&ch=%d",
         proxyHost, videoId,
-        TT_AUDIO_RATE, TT_AUDIO_CHANNELS, srcH];
+        TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
 
     playerController = [[TTPlayerWindowController alloc]
         initWithTitle:title
