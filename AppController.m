@@ -62,7 +62,7 @@ static void ttCenterLabelInRow(NSTextField* label, float rowY, float rowH,
    pixelation spikes that a CBR target produces on high-motion frames. */
 static const int TT_VIDEO_WIDTH    = 320;
 static const int TT_VIDEO_HEIGHT   = 240;
-static const int TT_VIDEO_QSCALE   = 4;      /* 2-31, lower=better */
+static const int TT_VIDEO_QSCALE   = 2;      /* 2-31, lower=better */
 static const int TT_VIDEO_FPS      = 24;
 static const int TT_VIDEO_GOP      = 12;     /* I-frame every 0.5s at 24fps */
 static const int TT_AUDIO_RATE     = 44100;  /* Hz */
@@ -296,7 +296,7 @@ static const int TT_AUDIO_CHANNELS = 2;
         NSMakeRect(x, rowY, qPopW, controlsH)];
     [qPop addItemsWithTitles:[NSArray arrayWithObjects:
         @"1", @"2", @"3", @"4", @"5", @"6", @"7", @"8", nil]];
-    [qPop selectItemWithTitle:@"4"];
+    [qPop selectItemWithTitle:@"2"];
     [qPop setAutoresizingMask:NSViewMinYMargin];
     [content addSubview:qPop];
     qualityPopup = qPop; /* weak: retained by superview */
