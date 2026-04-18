@@ -6,3 +6,4 @@ build/
 *.perspectivev3
 .DS_Store
 Secrets.h
+.claude/
