@@ -316,6 +316,10 @@ static void* audioThreadFunc(void* arg);
     [content addSubview:playerView];
     [playerView release]; /* retained by superview */
 
+    /* Center on the screen (slightly high of actual center -- NSWindow
+       places the window ~1/3 from the top, which reads better than
+       dead-center on a 1024x768 iMac display). */
+    [window center];
     [window makeKeyAndOrderFront:nil];
     /* Make the player view first responder so keyDown: (f, ESC, q) fires. */
     [window makeFirstResponder:playerView];
