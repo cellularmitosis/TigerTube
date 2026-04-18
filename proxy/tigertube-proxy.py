@@ -55,6 +55,19 @@ except ImportError:
     )
     sys.exit(1)
 
+# yt-dlp: resolves a YouTube ID to direct googlevideo URLs.  Used as a
+# library (not a subprocess) so we can introspect the full format list
+# and pick separate video-only and audio-only streams, letting the two
+# endpoints fetch only what they need.
+try:
+    import yt_dlp
+except ImportError:
+    sys.stderr.write(
+        "error: the 'yt-dlp' python package is required.\n"
+        "       install it with:  pip3 install yt-dlp\n"
+    )
+    sys.exit(1)
+
 # --- config ---
 
 PORT = 5002                                   # avoid 5001 used by test-server.py
@@ -70,10 +83,10 @@ V_DEFAULT_G   = 12                            # GOP size; 12 @ 24fps = I-frame e
 A_DEFAULT_RATE = 44100
 A_DEFAULT_CH   = 2
 
-# --- yt-dlp URL cache (googlevideo tokens last ~5.5h) ---
+# --- yt-dlp info cache (googlevideo tokens last ~5.5h) ---
 
 YT_URL_TTL = 19800                            # 5h30m in seconds
-_yt_cache = {}                                # id -> (url, timestamp)
+_yt_cache = {}                                # id -> (info_dict, timestamp)
 
 # yt-dlp impersonates one of YouTube's internal player clients to fetch
 # the format list. Bot detection ("Sign in to confirm you're not a
@@ -83,7 +96,14 @@ _yt_cache = {}                                # id -> (url, timestamp)
 # drifts as YouTube tightens enforcement -- if every request is hitting
 # bot detection, check yt-dlp's GitHub issues for the current
 # known-good clients.
-YT_PLAYER_CLIENTS = "tv_simply,web_safari,mweb"
+#
+# `android_vr` is load-bearing for the split-stream refactor: it's the
+# only client in this set that currently returns separate video-only
+# and audio-only DASH formats.  Without it, yt-dlp returns only
+# combined HLS streams and pick_video_format/pick_audio_format fall
+# back to downloading the same combined URL twice -- the exact
+# bandwidth waste this refactor exists to fix.
+YT_PLAYER_CLIENTS = ["tv_simply", "web_safari", "mweb", "android_vr"]
 
 # Source-height cap tiers the proxy will request from yt-dlp.  Picked
 # implicitly per request based on the client's requested output height
@@ -121,47 +141,143 @@ def compute_src_height(requested_h):
             return tier
     return YT_ALLOWED_SRC_HEIGHTS[-1]
 
-def yt_resolve(youtube_id, src_h):
-    """Resolve a YouTube ID to a direct googlevideo URL via yt-dlp.
+def yt_extract_info(youtube_id):
+    """Extract the full yt-dlp info dict for a YouTube ID.
 
-    Caches per (id, src_h) for 5.5h. Picks best mp4 up to src_h."""
+    Caches per id for 5.5h (googlevideo token TTL).  Callers then pick
+    a video-only or audio-only URL out of info['formats'] so the two
+    endpoints can fetch independent streams instead of downloading the
+    full combined mp4 twice.
+    """
     now = time.time()
-    key = (youtube_id, src_h)
-    if key in _yt_cache:
-        url, ts = _yt_cache[key]
+    if youtube_id in _yt_cache:
+        info, ts = _yt_cache[youtube_id]
         if now - ts < YT_URL_TTL:
-            return url
-    fmt = (f"best[height<={src_h}][ext=mp4]/"
-           f"best[height<={src_h}]")
-    cmd = [
-        "yt-dlp",
-        "-f", fmt,
-        "--extractor-args", f"youtube:player_client={YT_PLAYER_CLIENTS}",
-        "-g",
-        f"https://www.youtube.com/watch?v={youtube_id}",
-    ]
-    print(f"--- yt-dlp: {' '.join(shlex.quote(a) for a in cmd)}", flush=True)
+            return info
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "extractor_args": {
+            "youtube": {"player_client": YT_PLAYER_CLIENTS},
+        },
+    }
+    url = f"https://www.youtube.com/watch?v={youtube_id}"
+    print(f"--- yt-dlp: extract {youtube_id} "
+          f"(player_client={','.join(YT_PLAYER_CLIENTS)})", flush=True)
     try:
-        url = subprocess.check_output(cmd, text=True).strip().splitlines()[0]
-    except subprocess.CalledProcessError as e:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False, process=True)
+    except yt_dlp.utils.DownloadError as e:
         print(f"--- yt-dlp failed: {e}", flush=True)
         abort(502, f"yt-dlp failed for {youtube_id}")
-    _yt_cache[key] = (url, now)
-    return url
+    _yt_cache[youtube_id] = (info, now)
+    return info
+
+def pick_video_format(info, src_h):
+    """Pick the best video-only format URL with height <= src_h.
+
+    Prefers mp4/h264 so ffmpeg's decoder stays on the fast path; falls
+    back to whatever the best non-mp4 tier is (vp9/av1) if that's all
+    the video exposes.
+
+    Fallback for videos that only have combined (audio+video) formats
+    -- e.g. YouTube Shorts, very old uploads: pick the best combined
+    stream and log a warning.  The /a/yt/ endpoint will then use the
+    same URL and we regress to today's double-download behavior for
+    that video, but it still plays.
+    """
+    formats = info.get("formats") or []
+    def vkey(f):
+        return (1 if f.get("ext") == "mp4" else 0,
+                f.get("height") or 0,
+                f.get("tbr") or 0)
+    video_only = [f for f in formats
+                  if f.get("vcodec", "none") != "none"
+                  and f.get("acodec", "none") == "none"
+                  and (f.get("height") or 0) <= src_h
+                  and f.get("url")]
+    if video_only:
+        return max(video_only, key=vkey)["url"]
+    combined = [f for f in formats
+                if f.get("vcodec", "none") != "none"
+                and f.get("acodec", "none") != "none"
+                and (f.get("height") or 0) <= src_h
+                and f.get("url")]
+    if combined:
+        best = max(combined, key=vkey)
+        print(f"--- pick_video_format: no video-only <={src_h}p for "
+              f"{info.get('id')}, falling back to combined "
+              f"{best.get('format_id')} ({best.get('ext')} "
+              f"{best.get('height')}p)", flush=True)
+        return best["url"]
+    abort(502, f"no usable video format for {info.get('id')}")
+
+def pick_audio_format(info):
+    """Pick the best audio-only format URL.  Prefers m4a/AAC.
+
+    Same combined-format fallback as pick_video_format for videos
+    without split streams.
+    """
+    formats = info.get("formats") or []
+    def akey(f):
+        return (1 if f.get("ext") == "m4a" else 0,
+                f.get("abr") or 0)
+    audio_only = [f for f in formats
+                  if f.get("vcodec", "none") == "none"
+                  and f.get("acodec", "none") != "none"
+                  and f.get("url")]
+    if audio_only:
+        return max(audio_only, key=akey)["url"]
+    combined = [f for f in formats
+                if f.get("vcodec", "none") != "none"
+                and f.get("acodec", "none") != "none"
+                and f.get("url")]
+    if combined:
+        # For combined fallback, sort by abr then prefer mp4.
+        def ckey(f):
+            return (1 if f.get("ext") == "mp4" else 0,
+                    f.get("abr") or 0)
+        best = max(combined, key=ckey)
+        print(f"--- pick_audio_format: no audio-only for "
+              f"{info.get('id')}, falling back to combined "
+              f"{best.get('format_id')} ({best.get('ext')})",
+              flush=True)
+        return best["url"]
+    abort(502, f"no usable audio format for {info.get('id')}")
 
 # --- source resolution ---
 
-def resolve_source(kind, ident, src_h=YT_DEFAULT_SRC_HEIGHT):
-    """kind: 'yt' or 'file'. Returns a URL/path ffmpeg can read.
-    src_h is only consulted for yt sources."""
+def _resolve_file_source(ident):
+    """Shared 'file' branch: absolute-ize, assert existence."""
+    path = os.path.abspath(ident)
+    if not os.path.isfile(path):
+        abort(404, f"not a file: {path}")
+    return path
+
+def resolve_video_source(kind, ident, src_h=YT_DEFAULT_SRC_HEIGHT):
+    """kind: 'yt' or 'file'. Returns a URL/path ffmpeg can read as a
+    video source.  For yt sources this is typically a DASH mp4
+    video-only URL; the audio path is resolved separately so we don't
+    download the combined mp4 twice.  src_h is only consulted for yt
+    sources."""
     if kind == "yt":
-        return yt_resolve(ident, src_h)
+        info = yt_extract_info(ident)
+        return pick_video_format(info, src_h)
     if kind == "file":
-        # Resolve to absolute, require the file to exist.
-        path = os.path.abspath(ident)
-        if not os.path.isfile(path):
-            abort(404, f"not a file: {path}")
-        return path
+        return _resolve_file_source(ident)
+    abort(400, f"unknown source kind: {kind}")
+
+def resolve_audio_source(kind, ident):
+    """kind: 'yt' or 'file'. Returns a URL/path ffmpeg can read as an
+    audio source.  For yt sources this is an audio-only stream
+    (typically DASH m4a).  For file sources it's just the file -- the
+    audio-extraction is done by ffmpeg in build_audio_cmd."""
+    if kind == "yt":
+        info = yt_extract_info(ident)
+        return pick_audio_format(info)
+    if kind == "file":
+        return _resolve_file_source(ident)
     abort(400, f"unknown source kind: {kind}")
 
 # --- cropdetect: strip baked-in pillarbox/letterbox bars ---
@@ -526,7 +642,7 @@ def GET_video_yt(handler):
     youtube_id = url_path.rsplit("/", 1)[1]
     t, w, h, br, fps, g, qv, crop_arg = parse_video_params(q)
     src_h = compute_src_height(h)
-    src = resolve_source("yt", youtube_id, src_h=src_h)
+    src = resolve_video_source("yt", youtube_id, src_h=src_h)
     crop = resolve_crop(crop_arg, "yt", youtube_id, src)
     cmd = build_video_cmd(src, t, w, h, br, fps, g, qv, crop=crop)
     stream_ffmpeg(handler, cmd, content_type="video/mpeg")
@@ -544,7 +660,7 @@ def GET_video_file(handler):
     if not path:
         abort(400, "missing path")
     t, w, h, br, fps, g, qv, crop_arg = parse_video_params(q)
-    src = resolve_source("file", path)
+    src = resolve_video_source("file", path)
     crop = resolve_crop(crop_arg, "file", path, src)
     cmd = build_video_cmd(src, t, w, h, br, fps, g, qv, crop=crop)
     stream_ffmpeg(handler, cmd, content_type="video/mpeg")
@@ -557,11 +673,10 @@ def GET_audio_yt(handler):
     url_path, q = parse_GET_path(handler.path)
     youtube_id = url_path.rsplit("/", 1)[1]
     t, rate, ch = parse_audio_params(q)
-    # Audio has no output-height context; use the default tier.  All
-    # YouTube mp4 tiers carry the same audio bitstream anyway, so this
-    # just means audio fetches may not share yt-dlp's URL cache with
-    # a concurrent higher-tier video fetch on the same id.
-    src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
+    # Audio has no output-height context.  pick_audio_format picks the
+    # best audio-only stream from the shared cached info dict, so a
+    # concurrent video fetch on the same id reuses the same extract.
+    src = resolve_audio_source("yt", youtube_id)
     cmd = build_audio_cmd(src, t, rate, ch)
     stream_ffmpeg(handler, cmd,
                   content_type=f"audio/L16; rate={rate}; channels={ch}")
@@ -579,7 +694,7 @@ def GET_audio_file(handler):
     if not path:
         abort(400, "missing path")
     t, rate, ch = parse_audio_params(q)
-    src = resolve_source("file", path)
+    src = resolve_audio_source("file", path)
     cmd = build_audio_cmd(src, t, rate, ch)
     stream_ffmpeg(handler, cmd,
                   content_type=f"audio/L16; rate={rate}; channels={ch}")
@@ -591,7 +706,7 @@ add_static_route("GET", "/a/file", GET_audio_file)
 def GET_probe_yt(handler):
     url_path, _ = parse_GET_path(handler.path)
     youtube_id = url_path.rsplit("/", 1)[1]
-    src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
+    src = resolve_video_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
     out = subprocess.check_output([
         "ffprobe", "-v", "error", "-show_streams", "-show_format",
         "-of", "json", src,
@@ -610,7 +725,7 @@ def GET_probe_file(handler):
     path = q.get("path")
     if not path:
         abort(400, "missing path")
-    src = resolve_source("file", path)
+    src = resolve_video_source("file", path)
     out = subprocess.check_output([
         "ffprobe", "-v", "error", "-show_streams", "-show_format",
         "-of", "json", src,
