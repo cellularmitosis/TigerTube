@@ -24,6 +24,12 @@
     NSTextField* searchField;     /* weak (retained by view hierarchy) */
     NSPopUpButton* resolutionPopup; /* weak */
     NSPopUpButton* qualityPopup;    /* weak */
+    NSTextField* dropsLabel;        /* weak; shows "N dropped frames"
+                                       to the right of qualityPopup,
+                                       hidden unless a player is open */
+    NSTimer* dropsPollTimer;        /* strong (retained by run loop);
+                                       updates dropsLabel every 0.25s
+                                       while the player is open */
     NSTableView* tableView;       /* weak (retained by NSScrollView) */
     BOOL searching;
     BOOL isShowingKeyPrompt;      /* coalesces back-to-back 403s */

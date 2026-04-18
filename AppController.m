@@ -301,6 +301,28 @@ static const int TT_AUDIO_CHANNELS = 2;
     [content addSubview:qPop];
     qualityPopup = qPop; /* weak: retained by superview */
     [qPop release];
+    x += qPopW + 16.0f;
+
+    /* Drops label -- appears to the right of the quality popup while a
+       player is open, hidden otherwise.  Wide enough for a 6-digit
+       count ("999999 dropped frames" ~= 170 px at 13pt system).  Left
+       edge is anchored by setAutoresizingMask NSViewMinYMargin just
+       like the other controls; the window's min width is plenty to
+       keep the label onscreen. */
+    float dropsW = 180.0f;
+    NSTextField* dLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(x, rowY, dropsW, controlsH)];
+    [dLabel setStringValue:@"0 dropped frames"];
+    [dLabel setBezeled:NO];
+    [dLabel setDrawsBackground:NO];
+    [dLabel setEditable:NO];
+    [dLabel setSelectable:NO];
+    [dLabel setAutoresizingMask:NSViewMinYMargin];
+    [dLabel setHidden:YES];
+    ttCenterLabelInRow(dLabel, rowY, controlsH, dropsW);
+    [content addSubview:dLabel];
+    dropsLabel = dLabel; /* weak: retained by superview */
+    [dLabel release];
 
     /* Table in a scroll view -- fills the rest, grows in both axes. */
     NSRect scrollFrame = NSMakeRect(margin,
@@ -830,7 +852,57 @@ static const int TT_AUDIO_CHANNELS = 2;
                height:height];
     if (playerController != nil) {
         [playerController play];
+        [self startDropsPolling];
     }
+}
+
+#pragma mark - Drops label (while a player is open)
+
+/* Called from playVideoAtIndex once the new player is created.  The
+   label stays hidden until the player reports a non-zero drop count
+   -- it only shows when drops are actually happening.  The 4 Hz poll
+   mirrors the player's framesDropped counter into the label text and
+   notices when the player's window has been closed, tearing itself
+   down in place of a delegate back to AppController. */
+- (void)startDropsPolling {
+    if (dropsLabel == nil) {
+        return;
+    }
+    [dropsLabel setHidden:YES];
+    if (dropsPollTimer != nil) {
+        [dropsPollTimer invalidate];
+        [dropsPollTimer release];
+        dropsPollTimer = nil;
+    }
+    dropsPollTimer = [[NSTimer
+        scheduledTimerWithTimeInterval:0.25
+                                target:self
+                              selector:@selector(dropsTick:)
+                              userInfo:nil
+                               repeats:YES] retain];
+}
+
+- (void)dropsTick:(NSTimer*)timer {
+    (void)timer;
+    if (playerController == nil
+        || ![[playerController window] isVisible])
+    {
+        [dropsLabel setHidden:YES];
+        if (dropsPollTimer != nil) {
+            [dropsPollTimer invalidate];
+            [dropsPollTimer release];
+            dropsPollTimer = nil;
+        }
+        return;
+    }
+    unsigned long n = [playerController framesDropped];
+    if (n == 0) {
+        [dropsLabel setHidden:YES];
+        return;
+    }
+    [dropsLabel setStringValue:
+        [NSString stringWithFormat:@"%lu dropped frames", n]];
+    [dropsLabel setHidden:NO];
 }
 
 #pragma mark - Bonjour proxy discovery

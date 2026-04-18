@@ -97,6 +97,24 @@
                                             derived drops formula can take
                                             "displayed since seek" rather
                                             than the cumulative. */
+    unsigned long segmentDropsHighWater; /* max currentSegmentDrops seen so
+                                            far this segment.  Latched
+                                            monotonic so the surface counter
+                                            never decreases on transient
+                                            queueCount dips (it oscillates
+                                            0..3 between display ticks and
+                                            decoder pushes). */
+    unsigned long samplesAtSegmentStart; /* samplesPlayed at the moment the
+                                            first frame of this segment
+                                            actually displays.  Used as the
+                                            audio-clock baseline for drop
+                                            accounting so the startup gap
+                                            (audio ring fills before the
+                                            decoder produces its first
+                                            post-seek frame) doesn't get
+                                            counted as CPU-bound drops.
+                                            ULONG_MAX = not yet snapshotted
+                                            for this segment. */
     double statsWall0;               /* wall time at play start */
     double statsCpu0;                /* CPU seconds at play start */
     double statsWallLast;            /* wall time of last stats log */
@@ -150,6 +168,10 @@
 /* Transport-bar action methods. */
 - (void)playButtonClicked:(id)sender;
 - (void)scrubDidFire:(id)sender;
+
+/* Accessors for the owner (AppController) to poll and surface in UI. */
+- (NSWindow*)window;
+- (unsigned long)framesDropped;
 
 @end
 

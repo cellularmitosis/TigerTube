@@ -7,6 +7,7 @@
 #import <Carbon/Carbon.h> /* SetSystemUIMode */
 #include <pthread.h>
 #include <unistd.h>
+#include <limits.h> /* ULONG_MAX */
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <curl/curl.h>
@@ -159,6 +160,8 @@ static void* audioThreadFunc(void* arg);
         framesDropped = 0;
         framesDroppedBanked = 0;
         framesDisplayedAtSeek = 0;
+        segmentDropsHighWater = 0;
+        samplesAtSegmentStart = ULONG_MAX;
         statsWall0 = 0;
         statsCpu0 = 0;
         statsWallLast = 0;
@@ -425,6 +428,14 @@ static void* audioThreadFunc(void* arg);
     [window close];
 }
 
+- (NSWindow*)window {
+    return window;
+}
+
+- (unsigned long)framesDropped {
+    return framesDropped;
+}
+
 - (void)togglePause {
     if (audioPlayer == nil || seeking) {
         return;
@@ -545,8 +556,12 @@ static void* audioThreadFunc(void* arg);
     queueCount = 0;
     pthread_mutex_unlock(&queueMutex);
     /* New segment: anchor the "displayed since seek" baseline here so
-       the derived drops formula starts fresh. */
+       the derived drops formula starts fresh, reset the high-water
+       latch, and arm the lazy samplesAtSegmentStart snapshot (picked
+       up at first post-seek display). */
     framesDisplayedAtSeek = framesDisplayed;
+    segmentDropsHighWater = 0;
+    samplesAtSegmentStart = ULONG_MAX;
 
     /* Keep texSetup = YES: dimensions haven't changed, the GL texture
        is still valid.  The window is also correctly sized. */
@@ -779,16 +794,41 @@ static void* audioThreadFunc(void* arg);
 - (unsigned long)currentSegmentDrops {
     double fps = [videoDecoder fps];
     if (fps <= 0 || audioPlayer == nil) {
-        return 0;
+        return segmentDropsHighWater;
     }
-    double audioSec = (double)[audioPlayer samplesPlayed] / 44100.0;
+    /* Wait for the first post-seek (or post-start) frame to display
+       before counting anything.  The audio ring typically fills before
+       the decoder emits its first frame -- that gap can be ~1.5 s and
+       would otherwise register as ~40 "drops" at the moment display
+       kicks in, even though no CPU-bound decode miss has occurred. */
+    if (framesDisplayed <= framesDisplayedAtSeek) {
+        return segmentDropsHighWater;
+    }
+    unsigned long samplesNow = [audioPlayer samplesPlayed];
+    /* Lazy-snapshot the audio clock baseline on first display this
+       segment.  samplesAtSegmentStart is ULONG_MAX while unset, which
+       is > any real samplesNow, so this branch fires exactly once per
+       segment. */
+    if (samplesAtSegmentStart > samplesNow) {
+        samplesAtSegmentStart = samplesNow;
+    }
+    double audioSec = (double)(samplesNow - samplesAtSegmentStart) / 44100.0;
     pthread_mutex_lock(&queueMutex);
     unsigned int qc = queueCount;
     pthread_mutex_unlock(&queueMutex);
     long expected = (long)(audioSec * fps);
     long displayedSeg = (long)framesDisplayed - (long)framesDisplayedAtSeek;
     long drops = expected - displayedSeg - (long)qc;
-    return (drops > 0) ? (unsigned long)drops : 0;
+    unsigned long clamped = (drops > 0) ? (unsigned long)drops : 0;
+    /* Latch monotonic: queueCount dips between display ticks and
+       decoder pushes cause the raw formula to oscillate ~+/-3 in
+       steady state, which surfaced as the counter "hunting" (+1, -1,
+       +1) in the UI.  Frames don't actually un-drop; the high-water
+       is the honest read. */
+    if (clamped > segmentDropsHighWater) {
+        segmentDropsHighWater = clamped;
+    }
+    return segmentDropsHighWater;
 }
 
 - (void)displayTimerFired:(NSTimer*)timer {
