@@ -34,6 +34,24 @@ static int ttPortFromNetService(NSNetService* service) {
     return 0;
 }
 
+/* Vertically-center a non-bezeled NSTextField label within a control
+   row of height rowH.  Needed because a plain NSTextField draws text
+   at the top of its frame, while adjacent NSPopUpButtons (and bezeled
+   text fields) vertically-center their text -- so shared frames leave
+   the label text floating above the popup's title.  sizeToFit picks
+   the label's natural height, then we re-center the frame within the
+   row while preserving the caller's allocated label width. */
+static void ttCenterLabelInRow(NSTextField* label, float rowY, float rowH,
+                               float keepWidth) {
+    [label sizeToFit];
+    NSSize sz = [label frame].size;
+    float x = [label frame].origin.x;
+    [label setFrame:NSMakeRect(x,
+                               rowY + (rowH - sz.height) / 2.0f,
+                               keepWidth,
+                               sz.height)];
+}
+
 /* Transcode parameters sent to the proxy.  Tuned for 320x240 @ 24fps
    playback on a 600 MHz iMac G3 without AltiVec -- the decoder has
    ~11x realtime headroom at these settings.
@@ -180,10 +198,35 @@ static const int TT_AUDIO_CHANNELS = 2;
     float searchFontSize = [NSFont smallSystemFontSize] * 2.0f;
     float searchH = searchFontSize + 12.0f;
 
-    /* Search field -- top, full width, springs from top. */
-    NSRect searchFrame = NSMakeRect(margin,
+    /* Search field -- top.  Matches the labeled-popup pattern used by
+       the controls row below: a static "Search:" label on the left and
+       the field filling the rest of the row.  NSTextFieldCell's
+       -setPlaceholderString: is a no-op at draw time on 10.4 for a
+       plain NSTextField (it's documented to work, but AppKit only
+       renders the placeholder for NSSearchFieldCell on Tiger), so we
+       spell the prompt out as a sibling label instead. */
+    float searchLabelW = 100.0f;
+    NSRect searchLabelFrame = NSMakeRect(margin,
+                                         cb.size.height - margin - searchH,
+                                         searchLabelW,
+                                         searchH);
+    NSTextField* searchLabel = [[NSTextField alloc]
+                                     initWithFrame:searchLabelFrame];
+    [searchLabel setStringValue:@"Search:"];
+    [searchLabel setFont:[NSFont systemFontOfSize:searchFontSize]];
+    [searchLabel setBezeled:NO];
+    [searchLabel setDrawsBackground:NO];
+    [searchLabel setEditable:NO];
+    [searchLabel setSelectable:NO];
+    [searchLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(searchLabel, cb.size.height - margin - searchH,
+                       searchH, searchLabelW);
+    [content addSubview:searchLabel];
+    [searchLabel release];
+
+    NSRect searchFrame = NSMakeRect(margin + searchLabelW,
                                     cb.size.height - margin - searchH,
-                                    cb.size.width - 2 * margin,
+                                    cb.size.width - 2 * margin - searchLabelW,
                                     searchH);
     NSTextField* sf = [[NSTextField alloc] initWithFrame:searchFrame];
     [sf setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
@@ -197,7 +240,6 @@ static const int TT_AUDIO_CHANNELS = 2;
     [sf setAction:@selector(searchAction:)];
     /* NSTextField fires its action on commit (Return / end-editing),
        which is exactly what we want -- no per-keystroke fire. */
-    [[sf cell] setPlaceholderString:@"Search YouTube..."];
     [content addSubview:sf];
     searchField = sf;    /* weak: retained by superview */
     [sf release];
@@ -217,6 +259,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     [resLabel setEditable:NO];
     [resLabel setSelectable:NO];
     [resLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(resLabel, rowY, controlsH, resLabelW);
     [content addSubview:resLabel];
     [resLabel release];
     x += resLabelW;
@@ -243,6 +286,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     [qLabel setEditable:NO];
     [qLabel setSelectable:NO];
     [qLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(qLabel, rowY, controlsH, qLabelW);
     [content addSubview:qLabel];
     [qLabel release];
     x += qLabelW;
@@ -272,6 +316,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     [srcLabel setEditable:NO];
     [srcLabel setSelectable:NO];
     [srcLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(srcLabel, rowY, controlsH, srcLabelW);
     [content addSubview:srcLabel];
     [srcLabel release];
     x += srcLabelW;
