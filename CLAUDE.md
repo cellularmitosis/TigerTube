@@ -57,6 +57,40 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
   directly. Faster than describing alignment issues in prose and catches
   problems like non-centered labels or truncated popup titles on the
   first look.
+- **Driving the UI from the agent — what works, what needs a human.**
+  The productive split for QA loops on imacg3/imacg52 is:
+  - *Text input and Return:* AppleScript via ssh works reliably.
+    `run_and_log.sh` leaves the search field as first responder, so
+    immediately after launch:
+    ```
+    ssh imacg3 'osascript \
+      -e "tell application \"System Events\" to tell process \"TigerTube\"" \
+      -e "set frontmost to true" \
+      -e "keystroke \"file:/tmp/test.mp4\"" \
+      -e "key code 36" \
+      -e "end tell"'
+    ```
+    (`key code 36` is Return.) This lets the agent type search
+    queries, submit them, and observe the resulting table.
+  - *Visual verification:* `screencapture -x` + `scp` + `Read` (as
+    above) is how the agent sees what the app did with the input.
+  - *Log verification:* `tail -N ~/tmp/tigertube.log` after each
+    step confirms things like `searchAction: fired`, `file:
+    accepted "…"`, HTTP status, etc.
+  - *Mouse clicks on NSTableView rows:* **needs a human.**
+    `System Events click at {x,y}` is unreliable for firing a
+    table row's target/action on Tiger — clicks land on the
+    widget but the single-click action doesn't fire consistently,
+    and the System Events "click element" variant (`click text
+    field 1 of window 1`) often returns
+    `NSReceiverEvaluationScriptError`. So the agent types the
+    query, screenshots the row, then asks the user to click "play."
+    This is a fair split: agent handles the deterministic stuff,
+    user supplies the one click per test case.
+  - *Clipboard / Cmd+A:* AppleScript `keystroke "a" using command
+    down` can trigger a `pbs` lookup warning in the log; harmless
+    but noisy. Relaunching TigerTube is cheaper and gives a clean
+    search field.
 
 ## Repo layout
 
