@@ -239,12 +239,23 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
             }
         }
 
+        /* snippet.liveBroadcastContent is "none" / "live" / "upcoming".
+           For non-VOD items contentDetails.duration is absent (or
+           "P0D"), so UI needs this hint to render "LIVE"/"UPCOMING"
+           in the duration slot instead of a blank. */
+        NSString* liveState = [snippet objectForKey:@"liveBroadcastContent"];
+
         NSMutableDictionary* row = [NSMutableDictionary dictionary];
         [row setObject:vid forKey:@"videoId"];
         [row setObject:title forKey:@"title"];
         [row setObject:channel forKey:@"channelTitle"];
         if (thumbURL != nil) {
             [row setObject:thumbURL forKey:@"thumbnailURL"];
+        }
+        if ([liveState isKindOfClass:[NSString class]]
+            && ([liveState isEqualToString:@"live"]
+                || [liveState isEqualToString:@"upcoming"])) {
+            [row setObject:liveState forKey:@"liveBroadcastContent"];
         }
         [results addObject:row];
         [videoIds addObject:vid];

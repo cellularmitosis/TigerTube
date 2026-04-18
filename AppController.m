@@ -418,7 +418,21 @@ static const int TT_AUDIO_CHANNELS = 2;
             if (channel != nil) {
                 [row setObject:[channel htmlDecoded] forKey:@"channelTitle"];
             }
-            if (duration != nil) {
+            /* Livestreams have no meaningful duration -- substitute
+               a status label in the cell's duration slot.  Checked
+               before the ISO 8601 path because YouTube returns
+               duration="P0D" for live items, which would otherwise
+               render as "0:00". */
+            NSString* liveState = [row objectForKey:@"liveBroadcastContent"];
+            if ([liveState isEqualToString:@"live"]) {
+                [row setObject:[NSNumber numberWithInt:0]
+                        forKey:@"durationSeconds"];
+                [row setObject:@"LIVE" forKey:@"duration"];
+            } else if ([liveState isEqualToString:@"upcoming"]) {
+                [row setObject:[NSNumber numberWithInt:0]
+                        forKey:@"durationSeconds"];
+                [row setObject:@"UPCOMING" forKey:@"duration"];
+            } else if (duration != nil) {
                 /* Stash raw seconds for the player's transport bar
                    before overwriting "duration" with the display form. */
                 int durSec = [duration iso8601DurationSeconds];

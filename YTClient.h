@@ -40,6 +40,9 @@
 //   thumbnailURL  NSString -- may be absent
 //   duration      NSString (ISO 8601, e.g. "PT3M45S") -- may be absent
 //   viewCount     NSString (decimal, e.g. "12345678") -- may be absent
+//   liveBroadcastContent  NSString ("live" or "upcoming") -- absent for
+//                 regular VODs.  Livestreams have no meaningful
+//                 duration, so UI should substitute a status label.
 // Returns nil on error.  Prints per-phase timing to stderr.
 - (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults;
 
