@@ -1,4 +1,5 @@
 build/
+__pycache__/
 *.pbxuser
 *.mode1
 *.mode1v3

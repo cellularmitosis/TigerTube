@@ -38,8 +38,10 @@ import re
 import shlex
 import socket
 import subprocess
+import sys
 import time
-from flask import Flask, Response, request, abort
+import http.server
+import urllib.parse
 
 # Bonjour / mDNS advertisement is optional -- proxy still works without it
 # (clients fall back to manual URL).  `pip install zeroconf` to enable.
@@ -48,8 +50,6 @@ try:
     _zeroconf_available = True
 except ImportError:
     _zeroconf_available = False
-
-app = Flask(__name__)
 
 # --- config ---
 
@@ -90,6 +90,19 @@ YT_PLAYER_CLIENTS = "tv_simply,web_safari,mweb"
 # proxy bandwidth, and ffmpeg CPU.  Must stay sorted ascending.
 YT_ALLOWED_SRC_HEIGHTS = (480, 720, 1080)
 YT_DEFAULT_SRC_HEIGHT = 480
+
+# --- http error plumbing ---
+
+class HTTPError(Exception):
+    """Raised by helpers to short-circuit with an HTTP error response.
+    Caught by handle_request; the dispatcher turns it into a text/plain
+    response with the given code."""
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+def abort(code, message):
+    raise HTTPError(code, message)
 
 def compute_src_height(requested_h):
     """Pick the smallest allowed source tier that still covers the
@@ -352,11 +365,13 @@ def build_audio_cmd(source, t, rate, ch):
 
 # --- streaming response helper ---
 
-def stream_ffmpeg(cmd, mimetype):
+def stream_ffmpeg(handler, cmd, content_type):
     """Spawn ffmpeg, stream its stdout back to the HTTP client.
 
-    Kills the subprocess on client disconnect (generator.close is called
-    by Flask/Werkzeug when the peer drops).
+    Uses HTTP/1.0 semantics -- no Content-Length, connection close
+    signals EOF.  Kills the subprocess on client disconnect (write to
+    handler.wfile raises BrokenPipeError / ConnectionResetError when
+    the peer drops).
     """
     print(f"--- spawn: {' '.join(shlex.quote(a) for a in cmd)}", flush=True)
     proc = subprocess.Popen(
@@ -365,117 +380,230 @@ def stream_ffmpeg(cmd, mimetype):
         stderr=subprocess.PIPE,
         bufsize=0,
     )
-
-    def generate():
-        try:
-            while True:
-                data = proc.stdout.read(CHUNK_SIZE)
-                if not data:
-                    break
-                yield data
-        finally:
-            if proc.poll() is None:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            # Drain stderr so ffmpeg errors get logged.
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-Type", content_type)
+        handler.end_headers()
+        while True:
+            data = proc.stdout.read(CHUNK_SIZE)
+            if not data:
+                break
             try:
-                err = proc.stderr.read()
-                if err:
-                    print(f"--- ffmpeg stderr:\n{err.decode('utf-8', errors='replace')}",
-                          flush=True)
+                handler.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                break
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.kill()
             except Exception:
                 pass
-            proc.wait()
+        # Drain stderr so ffmpeg errors get logged.
+        try:
+            err = proc.stderr.read()
+            if err:
+                print(f"--- ffmpeg stderr:\n{err.decode('utf-8', errors='replace')}",
+                      flush=True)
+        except Exception:
+            pass
+        proc.wait()
 
-    return Response(generate(), mimetype=mimetype)
+# --- http server plumbing ---
+
+# Given '/foo?bar=42', return ('/foo', {'bar':'42'}).
+def parse_GET_path(path_query):
+    if '?' not in path_query:
+        path_part = path_query
+        query_dict = {}
+    else:
+        path_part, query_part = path_query.split('?', 1)
+        query_dict = {}
+        for k, v in urllib.parse.parse_qs(query_part).items():
+            query_dict[k] = v[-1]
+    while len(path_part) > 1 and path_part.endswith('/'):
+        path_part = path_part[:-1]
+    return path_part, query_dict
+
+# Send a text response with Content-Length.  Used for index, errors,
+# and probe JSON -- anything that isn't a live ffmpeg stream.
+def send_text(handler, code, body, content_type="text/plain; charset=UTF-8"):
+    if isinstance(body, str):
+        data = body.encode("utf-8")
+    else:
+        data = body
+    handler.send_response(code)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+# Routing.  Static routes match an exact path; regex routes match the
+# url_path against a compiled pattern.  Handlers parse their own path
+# params out of handler.path (see GET_video_yt).
+g_static_routes = {}
+g_regex_routes = []
+
+def add_static_route(http_method, url_path, fn):
+    g_static_routes.setdefault(url_path, {})[http_method] = fn
+
+def add_regex_route(http_method, label, regex, fn):
+    g_regex_routes.append((http_method, label, regex, fn))
+
+def route(handler):
+    url_path, _ = parse_GET_path(handler.path)
+    method = handler.command
+    fn_dict = g_static_routes.get(url_path)
+    if fn_dict:
+        fn = fn_dict.get(method)
+        if fn:
+            return fn
+    for method_i, _label, regex, fn in g_regex_routes:
+        if method_i != method:
+            continue
+        if regex.match(url_path):
+            return fn
+    return None
+
+def handle_request(handler):
+    try:
+        fn = route(handler)
+        if fn is None:
+            send_text(handler, 404, "Not Found\n")
+            return
+        fn(handler)
+    except HTTPError as e:
+        try:
+            send_text(handler, e.code, f"{e.message}\n")
+        except Exception:
+            pass
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    except Exception as e:
+        try:
+            send_text(handler, 500, f"Internal server error: {e}\n")
+        except Exception:
+            pass
+        raise
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        handle_request(self)
+    def do_HEAD(self):
+        handle_request(self)
 
 # --- param parsing ---
 
-def parse_video_params():
-    t   = float(request.args.get("t",   "0"))
-    w   = int(request.args.get("w",     V_DEFAULT_W))
-    h   = int(request.args.get("h",     V_DEFAULT_H))
-    br  = request.args.get("br",        V_DEFAULT_BR)
-    fps = int(request.args.get("fps",   V_DEFAULT_FPS))
-    g   = int(request.args.get("g",     V_DEFAULT_G))
+def parse_video_params(query_dict):
+    t   = float(query_dict.get("t",   "0"))
+    w   = int(query_dict.get("w",     V_DEFAULT_W))
+    h   = int(query_dict.get("h",     V_DEFAULT_H))
+    br  = query_dict.get("br",        V_DEFAULT_BR)
+    fps = int(query_dict.get("fps",   V_DEFAULT_FPS))
+    g   = int(query_dict.get("g",     V_DEFAULT_G))
     # Quality mode is opt-in: only used when the client passes q=.
     # When present it overrides br= inside build_video_cmd.
-    q_arg = request.args.get("q")
+    q_arg = query_dict.get("q")
     q = int(q_arg) if q_arg is not None else None
     # Crop is opt-in. Unset -> no crop. "auto" -> cropdetect probe
     # (cached per source). "W:H:X:Y" -> manual literal crop.
-    crop_arg = request.args.get("crop")
+    crop_arg = query_dict.get("crop")
     return t, w, h, br, fps, g, q, crop_arg
 
-def parse_audio_params():
-    t    = float(request.args.get("t",    "0"))
-    rate = int(request.args.get("rate",   A_DEFAULT_RATE))
-    ch   = int(request.args.get("ch",     A_DEFAULT_CH))
+def parse_audio_params(query_dict):
+    t    = float(query_dict.get("t",    "0"))
+    rate = int(query_dict.get("rate",   A_DEFAULT_RATE))
+    ch   = int(query_dict.get("ch",     A_DEFAULT_CH))
     return t, rate, ch
 
 # --- routes: video ---
 
-@app.route("/v/yt/<youtube_id>")
-def video_yt(youtube_id):
-    t, w, h, br, fps, g, q, crop_arg = parse_video_params()
+def GET_video_yt(handler):
+    url_path, q = parse_GET_path(handler.path)
+    youtube_id = url_path.rsplit("/", 1)[1]
+    t, w, h, br, fps, g, qv, crop_arg = parse_video_params(q)
     src_h = compute_src_height(h)
     src = resolve_source("yt", youtube_id, src_h=src_h)
     crop = resolve_crop(crop_arg, "yt", youtube_id, src)
-    cmd = build_video_cmd(src, t, w, h, br, fps, g, q, crop=crop)
-    return stream_ffmpeg(cmd, mimetype="video/mpeg")
+    cmd = build_video_cmd(src, t, w, h, br, fps, g, qv, crop=crop)
+    stream_ffmpeg(handler, cmd, content_type="video/mpeg")
 
-@app.route("/v/file")
-def video_file():
-    path = request.args.get("path")
+add_regex_route(
+    "GET",
+    "/v/yt/:id",
+    re.compile(r"^/v/yt/[A-Za-z0-9_-]+$"),
+    GET_video_yt,
+)
+
+def GET_video_file(handler):
+    _, q = parse_GET_path(handler.path)
+    path = q.get("path")
     if not path:
         abort(400, "missing path")
-    t, w, h, br, fps, g, q, crop_arg = parse_video_params()
+    t, w, h, br, fps, g, qv, crop_arg = parse_video_params(q)
     src = resolve_source("file", path)
     crop = resolve_crop(crop_arg, "file", path, src)
-    cmd = build_video_cmd(src, t, w, h, br, fps, g, q, crop=crop)
-    return stream_ffmpeg(cmd, mimetype="video/mpeg")
+    cmd = build_video_cmd(src, t, w, h, br, fps, g, qv, crop=crop)
+    stream_ffmpeg(handler, cmd, content_type="video/mpeg")
+
+add_static_route("GET", "/v/file", GET_video_file)
 
 # --- routes: audio ---
 
-@app.route("/a/yt/<youtube_id>")
-def audio_yt(youtube_id):
-    t, rate, ch = parse_audio_params()
+def GET_audio_yt(handler):
+    url_path, q = parse_GET_path(handler.path)
+    youtube_id = url_path.rsplit("/", 1)[1]
+    t, rate, ch = parse_audio_params(q)
     # Audio has no output-height context; use the default tier.  All
     # YouTube mp4 tiers carry the same audio bitstream anyway, so this
     # just means audio fetches may not share yt-dlp's URL cache with
     # a concurrent higher-tier video fetch on the same id.
     src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
     cmd = build_audio_cmd(src, t, rate, ch)
-    mime = f"audio/L16; rate={rate}; channels={ch}"
-    return stream_ffmpeg(cmd, mimetype=mime)
+    stream_ffmpeg(handler, cmd,
+                  content_type=f"audio/L16; rate={rate}; channels={ch}")
 
-@app.route("/a/file")
-def audio_file():
-    path = request.args.get("path")
+add_regex_route(
+    "GET",
+    "/a/yt/:id",
+    re.compile(r"^/a/yt/[A-Za-z0-9_-]+$"),
+    GET_audio_yt,
+)
+
+def GET_audio_file(handler):
+    _, q = parse_GET_path(handler.path)
+    path = q.get("path")
     if not path:
         abort(400, "missing path")
-    t, rate, ch = parse_audio_params()
+    t, rate, ch = parse_audio_params(q)
     src = resolve_source("file", path)
     cmd = build_audio_cmd(src, t, rate, ch)
-    mime = f"audio/L16; rate={rate}; channels={ch}"
-    return stream_ffmpeg(cmd, mimetype=mime)
+    stream_ffmpeg(handler, cmd,
+                  content_type=f"audio/L16; rate={rate}; channels={ch}")
+
+add_static_route("GET", "/a/file", GET_audio_file)
 
 # --- routes: probe (debugging) ---
 
-@app.route("/probe/yt/<youtube_id>")
-def probe_yt(youtube_id):
+def GET_probe_yt(handler):
+    url_path, _ = parse_GET_path(handler.path)
+    youtube_id = url_path.rsplit("/", 1)[1]
     src = resolve_source("yt", youtube_id, src_h=YT_DEFAULT_SRC_HEIGHT)
     out = subprocess.check_output([
         "ffprobe", "-v", "error", "-show_streams", "-show_format",
         "-of", "json", src,
     ], text=True)
-    return Response(out, mimetype="application/json")
+    send_text(handler, 200, out, content_type="application/json")
 
-@app.route("/probe/file")
-def probe_file():
-    path = request.args.get("path")
+add_regex_route(
+    "GET",
+    "/probe/yt/:id",
+    re.compile(r"^/probe/yt/[A-Za-z0-9_-]+$"),
+    GET_probe_yt,
+)
+
+def GET_probe_file(handler):
+    _, q = parse_GET_path(handler.path)
+    path = q.get("path")
     if not path:
         abort(400, "missing path")
     src = resolve_source("file", path)
@@ -483,13 +611,14 @@ def probe_file():
         "ffprobe", "-v", "error", "-show_streams", "-show_format",
         "-of", "json", src,
     ], text=True)
-    return Response(out, mimetype="application/json")
+    send_text(handler, 200, out, content_type="application/json")
+
+add_static_route("GET", "/probe/file", GET_probe_file)
 
 # --- routes: index ---
 
-@app.route("/")
-def index():
-    return Response(
+def GET_index(handler):
+    body = (
         "tigertube-proxy\n"
         "\n"
         "Video (raw MPEG-1 elementary stream):\n"
@@ -512,9 +641,11 @@ def index():
         f"{A_DEFAULT_CH}ch s16be.\n"
         f"yt source cap is derived from h=: picks the smallest of "
         f"{'/'.join(f'{v}p' for v in YT_ALLOWED_SRC_HEIGHTS)} that "
-        f"still covers h.  Audio/probe use {YT_DEFAULT_SRC_HEIGHT}p.\n",
-        mimetype="text/plain",
+        f"still covers h.  Audio/probe use {YT_DEFAULT_SRC_HEIGHT}p.\n"
     )
+    send_text(handler, 200, body)
+
+add_static_route("GET", "/", GET_index)
 
 # --- Bonjour advertisement ---
 
@@ -560,9 +691,14 @@ def register_bonjour():
 
 if __name__ == "__main__":
     zc, info = register_bonjour()
+    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    print(f"--- listening on 0.0.0.0:{PORT}", flush=True)
     try:
-        app.run(host="0.0.0.0", port=PORT, threaded=True)
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
     finally:
+        server.server_close()
         if zc is not None:
             zc.unregister_service(info)
             zc.close()
