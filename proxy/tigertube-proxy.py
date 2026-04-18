@@ -36,6 +36,7 @@
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -684,9 +685,32 @@ def register_bonjour():
           f"(server={info.server})", flush=True)
     return zc, info
 
+# --- startup checks ---
+
+def check_ffmpeg():
+    """Verify ffmpeg is on PATH.  Every /v/... and /a/... request spawns
+    ffmpeg, so without it the proxy serves nothing useful."""
+    if shutil.which("ffmpeg") is not None:
+        return
+    if sys.platform == "darwin":
+        hint = "install it with:  brew install ffmpeg"
+    elif sys.platform.startswith("linux"):
+        hint = ("install it with your distro's package manager, e.g.:\n"
+                "         apt install ffmpeg      (debian/ubuntu)\n"
+                "         dnf install ffmpeg      (fedora)\n"
+                "         pacman -S ffmpeg        (arch)")
+    else:
+        hint = "install ffmpeg from https://ffmpeg.org/download.html"
+    sys.stderr.write(
+        "error: 'ffmpeg' was not found on PATH.\n"
+        f"       {hint}\n"
+    )
+    sys.exit(1)
+
 # --- main ---
 
 if __name__ == "__main__":
+    check_ffmpeg()
     zc, info = register_bonjour()
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"--- listening on 0.0.0.0:{PORT}", flush=True)
