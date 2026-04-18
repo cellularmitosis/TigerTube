@@ -102,6 +102,8 @@ static void* audioThreadFunc(void* arg);
             videoURL:(NSString*)vURL
             audioURL:(NSString*)aURL
             duration:(int)durSec
+               width:(int)w
+              height:(int)h
 {
     self = [super init];
     if (self != nil) {
@@ -109,6 +111,8 @@ static void* audioThreadFunc(void* arg);
         videoURL = [vURL copy];
         audioURL = [aURL copy];
         duration = (durSec > 0) ? durSec : 0;
+        initialWidth = (w > 0) ? w : 320;
+        initialHeight = (h > 0) ? h : 240;
         startTime = 0;
 
         videoDecoder = [[TTVideoDecoder alloc] init];
@@ -207,8 +211,14 @@ static void* audioThreadFunc(void* arg);
                        | NSMiniaturizableWindowMask
                        | NSResizableWindowMask;
 
-    /* 320x240 video + 32 for the transport bar. */
-    NSRect contentRect = NSMakeRect(100, 100, 320, 240 + TT_BAR_HEIGHT);
+    /* User-selected video resolution + 32 for the transport bar.  The
+       first decoded frame will setFrame: again if the actual stream
+       dims differ (proxy clamp, pillarbox, etc.), but starting at the
+       requested size avoids the visible shrink-then-grow when the user
+       picked a larger resolution than the 320x240 default. */
+    NSRect contentRect = NSMakeRect(100, 100,
+                                    initialWidth,
+                                    initialHeight + TT_BAR_HEIGHT);
     window = [[NSWindow alloc] initWithContentRect:contentRect
                                          styleMask:style
                                            backing:NSBackingStoreBuffered

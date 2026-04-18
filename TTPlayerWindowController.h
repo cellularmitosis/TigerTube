@@ -60,6 +60,10 @@
     /* Playback info */
     NSString* videoTitle;          /* strong */
     int duration;                  /* total seconds, 0 if unknown */
+    int initialWidth;              /* user-selected resolution, used to
+                                      size the window before the first
+                                      decoded frame arrives */
+    int initialHeight;
     volatile BOOL seeking;         /* drop repeated arrow-key presses
                                       while a seek is still in flight */
     volatile BOOL paused;          /* spacebar pause: AU is stopped, the
@@ -104,7 +108,9 @@
 - (id)initWithTitle:(NSString*)title
             videoURL:(NSString*)vURL
             audioURL:(NSString*)aURL
-            duration:(int)durSec;
+            duration:(int)durSec
+               width:(int)w
+              height:(int)h;
 - (void)dealloc;
 
 /* Start playback. */

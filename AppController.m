@@ -825,7 +825,9 @@ static const int TT_AUDIO_CHANNELS = 2;
         initWithTitle:title
              videoURL:vURL
              audioURL:aURL
-             duration:durSec];
+             duration:durSec
+                width:width
+               height:height];
     if (playerController != nil) {
         [playerController play];
     }
