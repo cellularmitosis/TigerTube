@@ -60,6 +60,10 @@
     NSString* videoTitle;          /* strong */
     volatile BOOL seeking;         /* drop repeated arrow-key presses
                                       while a seek is still in flight */
+    volatile BOOL paused;          /* spacebar pause: AU is stopped, the
+                                      audio clock is frozen, displayTimer
+                                      early-returns.  Fetch threads block
+                                      naturally on ring-full / queue-full. */
 
     /* Frame accounting / stats */
     unsigned long framesDisplayed;   /* frames actually pushed to GL */
@@ -107,6 +111,9 @@
    Positive = forward, negative = backward; clamps at 0.  mplayer-style
    keyboard bindings: left/right = +/-15s, up/down = +/-60s. */
 - (void)seekBy:(double)delta;
+
+/* Toggle pause/resume.  Spacebar binding from TTPlayerView. */
+- (void)togglePause;
 
 @end
 

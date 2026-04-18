@@ -103,6 +103,7 @@ static void* audioThreadFunc(void* arg);
         audioStreamDone = NO;
         stopRequested = NO;
         seeking = NO;
+        paused = NO;
         displayTimer = nil;
         fullscreenWindow = nil;
         isFullscreen = NO;
@@ -279,6 +280,21 @@ static void* audioThreadFunc(void* arg);
         [self exitFullscreen];
     }
     [window close];
+}
+
+- (void)togglePause {
+    if (audioPlayer == nil || seeking) {
+        return;
+    }
+    if (paused) {
+        paused = NO;
+        [audioPlayer start];
+        fprintf(stderr, "player: resume\n");
+    } else {
+        paused = YES;
+        [audioPlayer stop];
+        fprintf(stderr, "player: pause\n");
+    }
 }
 
 - (void)seekBy:(double)delta {
@@ -570,6 +586,12 @@ static void* audioThreadFunc(void* arg);
     if (stopRequested) {
         [timer invalidate];
         displayTimer = nil;
+        return;
+    }
+    if (paused) {
+        /* Drop tick-cadence baseline so the first tick after resume
+           doesn't report a giant interval. */
+        tickLastWall = 0;
         return;
     }
 

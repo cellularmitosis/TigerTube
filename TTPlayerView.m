@@ -203,6 +203,10 @@ static unsigned int nextPow2(unsigned int v) {
             [controller closePlayer];
             return;
         }
+        if (c == ' ') {
+            [controller togglePause];
+            return;
+        }
         /* mplayer-style seek bindings. */
         if (c == NSRightArrowFunctionKey) {
             [controller seekBy:+15.0];
