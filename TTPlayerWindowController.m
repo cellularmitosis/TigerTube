@@ -359,7 +359,17 @@ static void* audioThreadFunc(void* arg);
     [playerView retain];
     [playerView removeFromSuperview];
     NSView* wContent = [window contentView];
-    [playerView setFrame:[wContent bounds]];
+    /* Restore the original layout: video above the transport bar, not
+       over it.  Sizing to [wContent bounds] covers the bar's rect,
+       which (a) hides the bar visually and (b) causes a 30 Hz
+       black-flicker: every bar-subview invalidation from the display
+       timer's slider/label updates triggers Cocoa to redraw the
+       overlapping playerView region, whose drawRect clears black and
+       flushes, alternating with the timer-driven content draws. */
+    NSRect cb = [wContent bounds];
+    [playerView setFrame:NSMakeRect(0, TT_BAR_HEIGHT,
+                                    cb.size.width,
+                                    cb.size.height - TT_BAR_HEIGHT)];
     [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
     [wContent addSubview:playerView];
     [playerView release]; /* now retained by wContent */
