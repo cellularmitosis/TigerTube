@@ -46,8 +46,9 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
   to `~/tmp/tigertube.log`, and relaunches. Don't open `.app` directly
   — LaunchServices swallows stderr.
 - `tiger-rsync.sh` preserves source mtimes (archive mode); if Xcode's
-  dependency tracking doesn't notice a header change,
-  `ssh imacg3 "touch tmp/TigerTube/src/Foo.h"` and rebuild.
+  dependency tracking doesn't notice a change to any source file
+  (`.h`, `.m`, or `.c`),
+  `ssh imacg3 "touch tmp/TigerTube/src/Foo.m"` and rebuild.
 - The proxy runs on **uranium** (this laptop), advertised over mDNS as
   `_tigertube-proxy._tcp` on port 5002. The client auto-discovers it;
   there is no hardcoded IP to update.
@@ -193,10 +194,12 @@ ring is saturated.
   The client currently omits the param (fast path). Only wire it in
   if the double-bars case is a real user complaint — the probe adds
   1–2 s to first-frame latency.
-- **Xcode dependency tracking can miss rsync'd headers** because
-  archive-mode rsync preserves source mtimes. If a `.h` change doesn't
-  trigger recompilation, `ssh imacg3 "touch tmp/TigerTube/src/Foo.h"` and
-  rebuild.
+- **Xcode dependency tracking can miss rsync'd sources** because
+  archive-mode rsync preserves source mtimes. Applies to `.h`, `.m`,
+  and `.c` files alike — Xcode reports `** BUILD SUCCEEDED **` without
+  recompiling and the relaunched binary is yesterday's. If a change
+  doesn't trigger recompilation,
+  `ssh imacg3 "touch tmp/TigerTube/src/Foo.m"` and rebuild.
 
 ## Feature workflow
 
