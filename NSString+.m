@@ -114,6 +114,34 @@
     return [NSString stringWithFormat:@"%d:%02d", minutes, seconds];
 }
 
+- (int)iso8601DurationSeconds {
+    if ([self length] < 3 || ![self hasPrefix:@"PT"]) {
+        return 0;
+    }
+    const char* s = [self UTF8String];
+    int hours = 0;
+    int minutes = 0;
+    int seconds = 0;
+    int current = 0;
+    int i;
+    for (i = 2; s[i] != '\0'; i++) {
+        char c = s[i];
+        if (c >= '0' && c <= '9') {
+            current = current * 10 + (c - '0');
+        } else if (c == 'H') {
+            hours = current;
+            current = 0;
+        } else if (c == 'M') {
+            minutes = current;
+            current = 0;
+        } else if (c == 'S') {
+            seconds = current;
+            current = 0;
+        }
+    }
+    return hours * 3600 + minutes * 60 + seconds;
+}
+
 - (NSString*)viewCountDisplay {
     /* Parse as double; we only care about 2-3 sig figs for display, so
      * precision loss above ~10^15 doesn't matter -- and double handles

@@ -21,6 +21,11 @@
 // don't start with "PT" are returned unchanged.
 - (NSString*)iso8601DurationDisplay;
 
+// Same parse as -iso8601DurationDisplay but returns the total in seconds
+// (e.g. "PT1H2M3S" -> 3723).  Returns 0 for strings that don't start
+// with "PT" (caller can treat as "unknown duration").
+- (int)iso8601DurationSeconds;
+
 // Treat the receiver as a decimal integer view count (e.g. "1234567")
 // and return an abbreviated display form: "1 view", "42 views",
 // "1.2K views", "15K views", "1.2M views", "123M views", "1.2B views".

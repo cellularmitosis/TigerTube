@@ -23,6 +23,47 @@
 - (BOOL)canBecomeMainWindow { return YES; }
 @end
 
+/* Transport-bar play/pause icons.  Tiny PNGs in the bundle -- Tiger's
+   Lucida Grande doesn't have usable glyphs for ▶/❚❚ at 11pt, so we
+   ship images instead (Risk #1 in the plan). */
+static NSImage* ttPlayImage(void) {
+    static NSImage* img = nil;
+    if (img == nil) {
+        NSString* p = [[NSBundle mainBundle] pathForResource:@"play"
+                                                      ofType:@"png"];
+        if (p != nil) {
+            img = [[NSImage alloc] initWithContentsOfFile:p];
+        }
+    }
+    return img;
+}
+static NSImage* ttPauseImage(void) {
+    static NSImage* img = nil;
+    if (img == nil) {
+        NSString* p = [[NSBundle mainBundle] pathForResource:@"pause"
+                                                      ofType:@"png"];
+        if (p != nil) {
+            img = [[NSImage alloc] initWithContentsOfFile:p];
+        }
+    }
+    return img;
+}
+
+/* Format a duration as M:SS (or H:MM:SS for >= 1h) into a fixed
+   buffer.  Negative inputs clamp to 0. */
+static void ttFormatTime(double sec, char* out, size_t outLen) {
+    if (sec < 0) sec = 0;
+    int total = (int)sec;
+    int h = total / 3600;
+    int m = (total / 60) % 60;
+    int s = total % 60;
+    if (h > 0) {
+        snprintf(out, outLen, "%d:%02d:%02d", h, m, s);
+    } else {
+        snprintf(out, outLen, "%d:%02d", m, s);
+    }
+}
+
 /* Wall-clock seconds since the epoch. */
 static double ttWallSec(void) {
     struct timeval tv;
@@ -60,12 +101,14 @@ static void* audioThreadFunc(void* arg);
 - (id)initWithTitle:(NSString*)title
             videoURL:(NSString*)vURL
             audioURL:(NSString*)aURL
+            duration:(int)durSec
 {
     self = [super init];
     if (self != nil) {
         videoTitle = [title copy];
         videoURL = [vURL copy];
         audioURL = [aURL copy];
+        duration = (durSec > 0) ? durSec : 0;
         startTime = 0;
 
         videoDecoder = [[TTVideoDecoder alloc] init];
@@ -140,6 +183,7 @@ static void* audioThreadFunc(void* arg);
     [videoURL release];
     [audioURL release];
     [videoTitle release];
+    [bar release];
     [window release];
     [fullscreenWindow release]; /* usually nil; safety net */
     {
@@ -155,14 +199,16 @@ static void* audioThreadFunc(void* arg);
     [super dealloc];
 }
 
+#define TT_BAR_HEIGHT 32
+
 - (void)buildWindow {
     unsigned int style = NSTitledWindowMask
                        | NSClosableWindowMask
                        | NSMiniaturizableWindowMask
                        | NSResizableWindowMask;
 
-    /* 320x240 content + some room for the title bar */
-    NSRect contentRect = NSMakeRect(100, 100, 320, 240);
+    /* 320x240 video + 32 for the transport bar. */
+    NSRect contentRect = NSMakeRect(100, 100, 320, 240 + TT_BAR_HEIGHT);
     window = [[NSWindow alloc] initWithContentRect:contentRect
                                          styleMask:style
                                            backing:NSBackingStoreBuffered
@@ -173,8 +219,83 @@ static void* audioThreadFunc(void* arg);
 
     NSView* content = [window contentView];
     NSRect cb = [content bounds];
+    float W = cb.size.width;
+    float H = cb.size.height;
 
-    playerView = [[TTPlayerView alloc] initWithFrame:cb];
+    /* ---- Transport bar ---- */
+    bar = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, W, TT_BAR_HEIGHT)];
+    [bar setAutoresizingMask:(NSViewWidthSizable | NSViewMaxYMargin)];
+    [content addSubview:bar];
+    /* bar retained by content view; we keep our own retain for ivar access */
+
+    playButton = [[NSButton alloc] initWithFrame:NSMakeRect(6, 4, 28, 24)];
+    [playButton setBezelStyle:NSShadowlessSquareBezelStyle];
+    [playButton setBordered:NO];
+    [playButton setImagePosition:NSImageOnly];
+    [playButton setImage:ttPlayImage()];
+    [playButton setTarget:self];
+    [playButton setAction:@selector(playButtonClicked:)];
+    [playButton setAutoresizingMask:NSViewMaxXMargin];
+    /* Let the player view keep keyboard focus (f, ESC, q, space).  We
+       don't want the button grabbing the focus ring. */
+    [playButton setFocusRingType:NSFocusRingTypeNone];
+    [bar addSubview:playButton];
+    [playButton release]; /* retained by bar */
+
+    /* Size the time label just wide enough for the longest possible
+       display given this video's duration.  Monaco is fixed-width, so
+       measuring a "max content" string at the chosen font gives an
+       exact pixel budget and leaves no dead space next to the slider. */
+    NSFont* timeFont = [NSFont fontWithName:@"Monaco" size:10.0];
+    NSString* maxText;
+    if (duration <= 0) {
+        maxText = @"0:00 / --:--";
+    } else if (duration < 600) {
+        maxText = @"9:59 / 9:59";
+    } else if (duration < 3600) {
+        maxText = @"59:59 / 59:59";
+    } else if (duration < 36000) {
+        maxText = @"9:59:59 / 9:59:59";
+    } else {
+        maxText = @"99:59:59 / 99:59:59";
+    }
+    NSDictionary* timeAttrs = [NSDictionary
+        dictionaryWithObject:timeFont forKey:NSFontAttributeName];
+    NSSize maxSize = [maxText sizeWithAttributes:timeAttrs];
+    int labelW = (int)ceilf(maxSize.width) + 4; /* 2 px on each side */
+    /* Bar layout: [6 btn 28][6 pad][slider][4 pad][label labelW][6 pad] */
+    int sliderW = (int)W - (40 + 4 + labelW + 6);
+
+    scrubSlider = [[TTScrubSlider alloc] initWithFrame:NSMakeRect(40, 6, sliderW, 20)];
+    [scrubSlider setMinValue:0.0];
+    [scrubSlider setMaxValue:(duration > 0) ? (double)duration : 1.0];
+    [scrubSlider setDoubleValue:0.0];
+    [scrubSlider setContinuous:NO]; /* action fires on mouseUp only */
+    [scrubSlider setEnabled:(duration > 0)];
+    [scrubSlider setTarget:self];
+    [scrubSlider setAction:@selector(scrubDidFire:)];
+    [scrubSlider setAutoresizingMask:NSViewWidthSizable];
+    [bar addSubview:scrubSlider];
+    [scrubSlider release]; /* retained by bar */
+
+    timeLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(W - labelW - 6, 8, labelW, 16)];
+    [timeLabel setBordered:NO];
+    [timeLabel setEditable:NO];
+    [timeLabel setSelectable:NO];
+    [timeLabel setDrawsBackground:NO];
+    [timeLabel setAlignment:NSRightTextAlignment];
+    /* Monaco at 10pt keeps digit widths stable so the label doesn't
+       dance as the seconds tick. */
+    [timeLabel setFont:timeFont];
+    [timeLabel setStringValue:(duration > 0) ? @"0:00 / 0:00" : @"0:00 / --:--"];
+    [timeLabel setAutoresizingMask:NSViewMinXMargin];
+    [bar addSubview:timeLabel];
+    [timeLabel release]; /* retained by bar */
+
+    /* ---- Video view above the bar ---- */
+    playerView = [[TTPlayerView alloc] initWithFrame:
+        NSMakeRect(0, TT_BAR_HEIGHT, W, H - TT_BAR_HEIGHT)];
     [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
     [playerView setController:self];
     [content addSubview:playerView];
@@ -289,12 +410,36 @@ static void* audioThreadFunc(void* arg);
     if (paused) {
         paused = NO;
         [audioPlayer start];
+        [playButton setImage:ttPauseImage()];
         fprintf(stderr, "player: resume\n");
     } else {
         paused = YES;
         [audioPlayer stop];
+        [playButton setImage:ttPlayImage()];
         fprintf(stderr, "player: pause\n");
     }
+}
+
+- (void)playButtonClicked:(id)sender {
+    (void)sender;
+    [self togglePause];
+    /* Restore first responder so subsequent keyboard bindings still
+       reach the player view. */
+    [window makeFirstResponder:playerView];
+}
+
+- (void)scrubDidFire:(id)sender {
+    (void)sender;
+    if (duration <= 0) {
+        return;
+    }
+    double current = startTime
+        + (double)[audioPlayer samplesPlayed] / 44100.0;
+    double target = [scrubSlider doubleValue];
+    double delta = target - current;
+    fprintf(stderr, "scrub: %.2fs -> %.2fs\n", current, target);
+    [self seekBy:delta];
+    [window makeFirstResponder:playerView];
 }
 
 - (void)seekBy:(double)delta {
@@ -422,6 +567,9 @@ static void* audioThreadFunc(void* arg);
     stopRequested = NO;
     videoStreamDone = NO;
     audioStreamDone = NO;
+
+    /* Button shows what clicking does: playing -> show pause glyph. */
+    [playButton setImage:ttPauseImage()];
 
     statsWall0 = ttWallSec();
     statsCpu0 = ttCpuSec();
@@ -588,6 +736,32 @@ static void* audioThreadFunc(void* arg);
         displayTimer = nil;
         return;
     }
+
+    /* Transport bar: refresh slider knob (when not being dragged) and
+       the time label.  Done before the pause early-return so the label
+       still tracks during a scrub-drag-while-paused. */
+    {
+        double audioSec = startTime
+            + (double)[audioPlayer samplesPlayed] / 44100.0;
+        double labelSec = [scrubSlider isDragging]
+            ? [scrubSlider doubleValue]
+            : audioSec;
+        if (![scrubSlider isDragging] && duration > 0) {
+            [scrubSlider setDoubleValue:audioSec];
+        }
+        char cur[16];
+        char tot[16];
+        ttFormatTime(labelSec, cur, sizeof(cur));
+        if (duration > 0) {
+            ttFormatTime((double)duration, tot, sizeof(tot));
+        } else {
+            snprintf(tot, sizeof(tot), "--:--");
+        }
+        char buf[40];
+        snprintf(buf, sizeof(buf), "%s / %s", cur, tot);
+        [timeLabel setStringValue:[NSString stringWithUTF8String:buf]];
+    }
+
     if (paused) {
         /* Drop tick-cadence baseline so the first tick after resume
            doesn't report a giant interval. */
@@ -614,13 +788,13 @@ static void* audioThreadFunc(void* arg);
                                    height:[videoDecoder height]];
         texSetup = YES;
 
-        /* Resize window to match video aspect ratio */
+        /* Resize window: content = video + transport bar. */
         unsigned int vw = [videoDecoder width];
         unsigned int vh = [videoDecoder height];
         NSRect frame = [window frame];
         float titleBarH = frame.size.height - [[window contentView] bounds].size.height;
         frame.size.width = (float)vw;
-        frame.size.height = (float)vh + titleBarH;
+        frame.size.height = (float)vh + TT_BAR_HEIGHT + titleBarH;
         [window setFrame:frame display:YES];
     }
 
@@ -746,6 +920,9 @@ static void* audioThreadFunc(void* arg);
 
 - (void)streamDidEnd {
     fprintf(stderr, "player: streams ended, stopping\n");
+    /* Flip button back to play glyph so the bar doesn't show "pause"
+       after playback is over. */
+    [playButton setImage:ttPlayImage()];
     /* Let the last audio buffer drain. */
     usleep(500000);
     [self stop];

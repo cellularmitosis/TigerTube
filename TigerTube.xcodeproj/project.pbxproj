@@ -37,6 +37,9 @@
 		2B4C4B152F900015000001AA /* TTAudioPlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B142F900014000001AA /* TTAudioPlayer.m */; };
 		2B4C4B182F900018000001AA /* TTPlayerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B172F900017000001AA /* TTPlayerView.m */; };
 		2B4C4B1B2F90001B000001AA /* TTPlayerWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */; };
+		2B4C4B202F910020000001AA /* TTScrubSlider.m in Sources */ = {isa = PBXBuildFile; fileRef = 2B4C4B222F910022000001AA /* TTScrubSlider.m */; };
+		2B4C4B252F910025000001AA /* play.png in Resources */ = {isa = PBXBuildFile; fileRef = 2B4C4B232F910023000001AA /* play.png */; };
+		2B4C4B262F910026000001AA /* pause.png in Resources */ = {isa = PBXBuildFile; fileRef = 2B4C4B242F910024000001AA /* pause.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -94,6 +97,10 @@
 		2B4C4B172F900017000001AA /* TTPlayerView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTPlayerView.m; sourceTree = "<group>"; };
 		2B4C4B192F900019000001AA /* TTPlayerWindowController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTPlayerWindowController.h; sourceTree = "<group>"; };
 		2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTPlayerWindowController.m; sourceTree = "<group>"; };
+		2B4C4B212F910021000001AA /* TTScrubSlider.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TTScrubSlider.h; sourceTree = "<group>"; };
+		2B4C4B222F910022000001AA /* TTScrubSlider.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TTScrubSlider.m; sourceTree = "<group>"; };
+		2B4C4B232F910023000001AA /* play.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = play.png; sourceTree = "<group>"; };
+		2B4C4B242F910024000001AA /* pause.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = pause.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -207,6 +214,8 @@
 				2B4C4B172F900017000001AA /* TTPlayerView.m */,
 				2B4C4B192F900019000001AA /* TTPlayerWindowController.h */,
 				2B4C4B1A2F90001A000001AA /* TTPlayerWindowController.m */,
+				2B4C4B212F910021000001AA /* TTScrubSlider.h */,
+				2B4C4B222F910022000001AA /* TTScrubSlider.m */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 			);
 			name = "Other Sources";
@@ -218,6 +227,8 @@
 				8D1107310486CEB800E47090 /* Info.plist */,
 				089C165CFE840E0CC02AAC07 /* InfoPlist.strings */,
 				29B97318FDCFA39411CA2CEA /* MainMenu.nib */,
+				2B4C4B232F910023000001AA /* play.png */,
+				2B4C4B242F910024000001AA /* pause.png */,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -295,6 +306,8 @@
 				8D11072A0486CEB800E47090 /* MainMenu.nib in Resources */,
 				8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */,
 				2B4C49052F840001000001AA /* cacert.pem in Resources */,
+				2B4C4B252F910025000001AA /* play.png in Resources */,
+				2B4C4B262F910026000001AA /* pause.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +334,7 @@
 				2B4C4B152F900015000001AA /* TTAudioPlayer.m in Sources */,
 				2B4C4B182F900018000001AA /* TTPlayerView.m in Sources */,
 				2B4C4B1B2F90001B000001AA /* TTPlayerWindowController.m in Sources */,
+				2B4C4B202F910020000001AA /* TTScrubSlider.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

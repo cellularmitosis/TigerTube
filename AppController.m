@@ -419,6 +419,11 @@ static const int TT_AUDIO_CHANNELS = 2;
                 [row setObject:[channel htmlDecoded] forKey:@"channelTitle"];
             }
             if (duration != nil) {
+                /* Stash raw seconds for the player's transport bar
+                   before overwriting "duration" with the display form. */
+                int durSec = [duration iso8601DurationSeconds];
+                [row setObject:[NSNumber numberWithInt:durSec]
+                        forKey:@"durationSeconds"];
                 [row setObject:[duration iso8601DurationDisplay]
                         forKey:@"duration"];
             }
@@ -800,10 +805,13 @@ static const int TT_AUDIO_CHANNELS = 2;
         proxyHost, videoId,
         TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
 
+    NSNumber* durBox = [item objectForKey:@"durationSeconds"];
+    int durSec = (durBox != nil) ? [durBox intValue] : 0;
     playerController = [[TTPlayerWindowController alloc]
         initWithTitle:title
              videoURL:vURL
-             audioURL:aURL];
+             audioURL:aURL
+             duration:durSec];
     if (playerController != nil) {
         [playerController play];
     }

@@ -15,6 +15,7 @@
 #import "TTVideoDecoder.h"
 #import "TTAudioPlayer.h"
 #import "TTPlayerView.h"
+#import "TTScrubSlider.h"
 
 /* Depth of the decoder->display UYVY frame queue.  Needs to be at least
    2 so a single slow display tick doesn't starve the decoder into
@@ -58,12 +59,21 @@
 
     /* Playback info */
     NSString* videoTitle;          /* strong */
+    int duration;                  /* total seconds, 0 if unknown */
     volatile BOOL seeking;         /* drop repeated arrow-key presses
                                       while a seek is still in flight */
     volatile BOOL paused;          /* spacebar pause: AU is stopped, the
                                       audio clock is frozen, displayTimer
                                       early-returns.  Fetch threads block
                                       naturally on ring-full / queue-full. */
+
+    /* Transport bar (windowed only -- bar lives on the titled window;
+       fullscreen reparents the playerView to a borderless window and
+       leaves the bar invisible behind). */
+    NSView* bar;                   /* strong (retained by content view) */
+    NSButton* playButton;          /* weak (retained by bar) */
+    TTScrubSlider* scrubSlider;    /* weak (retained by bar) */
+    NSTextField* timeLabel;        /* weak (retained by bar) */
 
     /* Frame accounting / stats */
     unsigned long framesDisplayed;   /* frames actually pushed to GL */
@@ -93,7 +103,8 @@
    videoId is the YouTube video ID (or "file" for local files). */
 - (id)initWithTitle:(NSString*)title
             videoURL:(NSString*)vURL
-            audioURL:(NSString*)aURL;
+            audioURL:(NSString*)aURL
+            duration:(int)durSec;
 - (void)dealloc;
 
 /* Start playback. */
@@ -114,6 +125,10 @@
 
 /* Toggle pause/resume.  Spacebar binding from TTPlayerView. */
 - (void)togglePause;
+
+/* Transport-bar action methods. */
+- (void)playButtonClicked:(id)sender;
+- (void)scrubDidFire:(id)sender;
 
 @end
 
