@@ -67,21 +67,39 @@ A_DEFAULT_CH   = 2
 YT_URL_TTL = 19800                            # 5h30m in seconds
 _yt_cache = {}                                # id -> (url, timestamp)
 
+# yt-dlp impersonates one of YouTube's internal player clients to fetch
+# the format list. Bot detection ("Sign in to confirm you're not a
+# bot") is applied per-client: `web` is the most aggressively gated,
+# while tv/embedded/mobile clients are often still cookie-free.
+# yt-dlp tries these in order and falls back on failure. This list
+# drifts as YouTube tightens enforcement -- if every request is hitting
+# bot detection, check yt-dlp's GitHub issues for the current
+# known-good clients.
+YT_PLAYER_CLIENTS = "tv_simply,web_safari,mweb"
+
+# Height cap for the YouTube source. TigerTube downscales to 320x240,
+# so 1080p source is pure waste. 720p is plenty and keeps the player
+# response smaller / yt-dlp invocations faster. Doesn't affect bot
+# detection (that fires before format selection) but saves bandwidth
+# and proxy-side ffmpeg CPU.
+YT_MAX_HEIGHT = 720
+
 def yt_resolve(youtube_id):
     """Resolve a YouTube ID to a direct googlevideo URL via yt-dlp.
 
-    Caches per id for 5.5h. Picks best mp4 <=1080p to avoid grabbing raw
-    4K that we'd then waste CPU rescaling server-side.
+    Caches per id for 5.5h. Picks best mp4 up to YT_MAX_HEIGHT.
     """
     now = time.time()
     if youtube_id in _yt_cache:
         url, ts = _yt_cache[youtube_id]
         if now - ts < YT_URL_TTL:
             return url
-    fmt = "best[height<=1080][ext=mp4]/best[height<=1080]"
+    fmt = (f"best[height<={YT_MAX_HEIGHT}][ext=mp4]/"
+           f"best[height<={YT_MAX_HEIGHT}]")
     cmd = [
         "yt-dlp",
         "-f", fmt,
+        "--extractor-args", f"youtube:player_client={YT_PLAYER_CLIENTS}",
         "-g",
         f"https://www.youtube.com/watch?v={youtube_id}",
     ]
