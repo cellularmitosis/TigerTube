@@ -56,6 +56,12 @@ static const int TT_AUDIO_CHANNELS = 2;
 - (void)searchDidFinish:(NSArray*)newResults;
 - (int)rowIndexForVideoId:(NSString*)videoId;
 - (void)playVideoAtIndex:(int)index;
+- (void)handleAPIKey403WithReason:(NSString*)reason
+                     usedOverride:(BOOL)usedOverride;
+- (void)saveOverrideKey:(NSString*)key;
+- (NSString*)runKeyPromptWithTitle:(NSString*)title body:(NSString*)body;
+- (void)keyPromptSave:(id)sender;
+- (void)keyPromptCancel:(id)sender;
 @end
 
 @implementation AppController
@@ -65,6 +71,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     if (self != nil) {
         results = [[NSMutableArray alloc] init];
         searching = NO;
+        isShowingKeyPrompt = NO;
         playerController = nil;
         /* Fallback proxy host -- used if Bonjour discovery doesn't
            find one in time.  Will be replaced once a proxy is resolved.
@@ -387,6 +394,254 @@ static const int TT_AUDIO_CHANNELS = 2;
     searching = NO;
     [searchField setEnabled:YES];
     [window makeFirstResponder:searchField];
+
+    /* If the search failed with 403, surface the key prompt.  Done
+       after the UI reset so the modal doesn't leave the search field
+       disabled or the spinner locked. */
+    if (newResults == nil && [client lastHTTPStatus] == 403) {
+        [self handleAPIKey403WithReason:[client lastErrorReason]
+                           usedOverride:[client lastErrorUsedOverrideKey]];
+    }
+}
+
+#pragma mark - YouTube API key override
+
+- (void)handleAPIKey403WithReason:(NSString*)reason
+                     usedOverride:(BOOL)usedOverride
+{
+    if (isShowingKeyPrompt) {
+        fprintf(stderr, "api key: 403 received while prompt already up, ignoring\n");
+        return;
+    }
+
+    BOOL isQuota = [reason isEqualToString:@"quotaExceeded"]
+                || [reason isEqualToString:@"dailyLimitExceeded"]
+                || [reason isEqualToString:@"rateLimitExceeded"];
+    BOOL overrideRejected = usedOverride
+                         && ([reason isEqualToString:@"keyInvalid"]
+                             || [reason isEqualToString:@"badRequest"]);
+    BOOL defaultRejected = !usedOverride
+                        && [reason isEqualToString:@"keyInvalid"];
+
+    if (!isQuota && !overrideRejected) {
+        fprintf(stderr, "api key: 403 reason='%s' usedOverride=%d "
+                        "-- not user-fixable via key paste, skipping prompt\n",
+                reason ? [reason UTF8String] : "(nil)",
+                usedOverride ? 1 : 0);
+        if (defaultRejected) {
+            NSAlert* a = [[[NSAlert alloc] init] autorelease];
+            [a setMessageText:@"YouTube API error"];
+            [a setInformativeText:@"The default YouTube API key was "
+                                   @"rejected by YouTube. This is "
+                                   @"unexpected -- please report it."];
+            [a runModal];
+        }
+        return;
+    }
+
+    NSString* title;
+    NSString* body;
+    if (isQuota) {
+        title = @"YouTube API quota reached";
+        body = @"TigerTube ships with a shared YouTube API key, and "
+               @"today's quota has been used up across all users.\n\n"
+               @"You can continue searching immediately by creating "
+               @"your own free API key:\n"
+               @"  1. Go to https://console.cloud.google.com/\n"
+               @"  2. Create a project (or pick an existing one)\n"
+               @"  3. Enable \"YouTube Data API v3\"\n"
+               @"  4. Create an API key under Credentials\n"
+               @"  5. Paste it below.\n\n"
+               @"Your key is saved to ~/.tigertube/youtube-api-key.txt "
+               @"and only used from this machine.";
+    } else {
+        title = @"Your YouTube API key was rejected";
+        body = @"The personal API key at "
+               @"~/.tigertube/youtube-api-key.txt was rejected by "
+               @"YouTube. Paste a replacement below, or delete that "
+               @"file to go back to the shared default key.";
+    }
+
+    isShowingKeyPrompt = YES;
+    NSString* pasted = [self runKeyPromptWithTitle:title body:body];
+    isShowingKeyPrompt = NO;
+
+    if (pasted == nil) {
+        return;
+    }
+    NSString* trimmed = [pasted stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([trimmed length] == 0) {
+        return;
+    }
+
+    [self saveOverrideKey:trimmed];
+}
+
+/* Modal key-prompt window.  NSAlert's -setAccessoryView: is 10.5+
+   (runtime confirmed: NSAlert on Tiger does not implement it), so
+   we build a plain NSWindow with a title label, wrapped body, text
+   field, and two buttons.  Runs via -[NSApp runModalForWindow:];
+   Save/Cancel buttons stop the modal with code 1/0.  Returns the
+   entered string on Save, or nil on Cancel. */
+- (NSString*)runKeyPromptWithTitle:(NSString*)title body:(NSString*)body {
+    float width = 460.0f;
+    float height = 290.0f;
+    NSRect wf = NSMakeRect(0, 0, width, height);
+    NSWindow* panel = [[NSWindow alloc]
+        initWithContentRect:wf
+                  styleMask:NSTitledWindowMask
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [panel setTitle:@"TigerTube"];
+    [panel setReleasedWhenClosed:NO];
+
+    NSView* cv = [panel contentView];
+    float pad = 20.0f;
+
+    /* Title, bold. */
+    float titleH = 20.0f;
+    NSTextField* titleLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(pad, height - pad - titleH,
+                   width - 2 * pad, titleH)];
+    [titleLabel setStringValue:title];
+    [titleLabel setFont:[NSFont boldSystemFontOfSize:13.0f]];
+    [titleLabel setBezeled:NO];
+    [titleLabel setDrawsBackground:NO];
+    [titleLabel setEditable:NO];
+    [titleLabel setSelectable:NO];
+    [cv addSubview:titleLabel];
+    [titleLabel release];
+
+    /* Body, wrapped, selectable. */
+    float inputH = 22.0f;
+    float btnH = 32.0f;
+    float bodyY = pad + btnH + 10.0f + inputH + 10.0f;
+    float bodyH = (height - pad - titleH - 6.0f) - bodyY;
+    NSTextField* bodyLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(pad, bodyY, width - 2 * pad, bodyH)];
+    [bodyLabel setStringValue:body];
+    [bodyLabel setFont:[NSFont systemFontOfSize:11.0f]];
+    [bodyLabel setBezeled:NO];
+    [bodyLabel setDrawsBackground:NO];
+    [bodyLabel setEditable:NO];
+    [bodyLabel setSelectable:YES];
+    [[bodyLabel cell] setWraps:YES];
+    [cv addSubview:bodyLabel];
+    [bodyLabel release];
+
+    /* Text field. */
+    NSTextField* input = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(pad, pad + btnH + 10.0f,
+                   width - 2 * pad, inputH)];
+    [input setBezeled:YES];
+    [input setBezelStyle:NSTextFieldSquareBezel];
+    [input setDrawsBackground:YES];
+    [input setEditable:YES];
+    [input setSelectable:YES];
+    [[input cell] setScrollable:YES];
+    [cv addSubview:input];
+
+    /* Buttons bottom-right: [Cancel] [Save Key]. */
+    float btnW = 95.0f;
+    float btnGap = 10.0f;
+    float saveX = width - pad - btnW;
+    float cancelX = saveX - btnGap - btnW;
+
+    NSButton* cancel = [[NSButton alloc] initWithFrame:
+        NSMakeRect(cancelX, pad, btnW, btnH)];
+    [cancel setTitle:@"Cancel"];
+    [cancel setBezelStyle:NSRoundedBezelStyle];
+    [cancel setKeyEquivalent:@"\033"];  /* Esc */
+    [cancel setTarget:self];
+    [cancel setAction:@selector(keyPromptCancel:)];
+    [cv addSubview:cancel];
+    [cancel release];
+
+    NSButton* save = [[NSButton alloc] initWithFrame:
+        NSMakeRect(saveX, pad, btnW, btnH)];
+    [save setTitle:@"Save Key"];
+    [save setBezelStyle:NSRoundedBezelStyle];
+    [save setKeyEquivalent:@"\r"];  /* Return -- becomes default button */
+    [save setTarget:self];
+    [save setAction:@selector(keyPromptSave:)];
+    [cv addSubview:save];
+    [save release];
+
+    [panel setInitialFirstResponder:input];
+    [panel center];
+
+    int rc = [NSApp runModalForWindow:panel];
+    [panel orderOut:nil];
+
+    NSString* result = nil;
+    if (rc == 1) {
+        result = [[[input stringValue] copy] autorelease];
+    }
+    [input release];
+    [panel release];
+    return result;
+}
+
+- (void)keyPromptSave:(id)sender {
+    [NSApp stopModalWithCode:1];
+}
+
+- (void)keyPromptCancel:(id)sender {
+    [NSApp stopModalWithCode:0];
+}
+
+- (void)saveOverrideKey:(NSString*)key {
+    NSString* dir = [@"~/.tigertube" stringByExpandingTildeInPath];
+    NSString* path = [dir stringByAppendingPathComponent:
+                              @"youtube-api-key.txt"];
+    NSFileManager* fm = [NSFileManager defaultManager];
+
+    /* Create ~/.tigertube mode 0700 if it doesn't exist.  The 10.4
+       signature is createDirectoryAtPath:attributes:; the newer
+       withIntermediateDirectories: variant is 10.5+. */
+    if (![fm fileExistsAtPath:dir]) {
+        NSDictionary* dirAttrs = [NSDictionary dictionaryWithObject:
+            [NSNumber numberWithInt:0700] forKey:NSFilePosixPermissions];
+        if (![fm createDirectoryAtPath:dir attributes:dirAttrs]) {
+            fprintf(stderr, "api key: failed to create %s\n",
+                    [dir UTF8String]);
+            NSAlert* a = [[[NSAlert alloc] init] autorelease];
+            [a setMessageText:@"Could not save key"];
+            [a setInformativeText:[NSString stringWithFormat:
+                @"Failed to create directory %@", dir]];
+            [a runModal];
+            return;
+        }
+    }
+
+    NSError* err = nil;
+    if (![key writeToFile:path
+              atomically:YES
+                encoding:NSUTF8StringEncoding
+                   error:&err]) {
+        NSString* msg = [err localizedDescription];
+        if (msg == nil) msg = @"(unknown error)";
+        fprintf(stderr, "api key: failed to write %s: %s\n",
+                [path UTF8String], [msg UTF8String]);
+        NSAlert* a = [[[NSAlert alloc] init] autorelease];
+        [a setMessageText:@"Could not save key"];
+        [a setInformativeText:[NSString stringWithFormat:
+            @"Failed to write %@: %@", path, msg]];
+        [a runModal];
+        return;
+    }
+
+    /* chmod 0600. */
+    NSDictionary* fileAttrs = [NSDictionary dictionaryWithObject:
+        [NSNumber numberWithInt:0600] forKey:NSFilePosixPermissions];
+    [fm changeFileAttributes:fileAttrs atPath:path];
+
+    /* Deliberately do not log the key bytes themselves. */
+    fprintf(stderr, "api key: saved override key (%lu bytes) to %s\n",
+            (unsigned long)[key lengthOfBytesUsingEncoding:
+                                NSUTF8StringEncoding],
+            [path UTF8String]);
 }
 
 #pragma mark - NSTableView data source

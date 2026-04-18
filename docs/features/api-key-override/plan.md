@@ -1,5 +1,12 @@
 # User-Overridable YouTube API Key
 
+> **Deviation note (2026-04-17):** Step 1 below was *not* followed.
+> The feature was re-implemented keeping the existing `Secrets.h`
+> pattern: `Secrets.h` stays gitignored and provides the
+> `YOUTUBE_API_KEY` define; `AppController.m` still `#import`s it.
+> The rest of the plan (override-file lookup in `YTClient`, 403
+> handling, key-prompt UI) landed unchanged.
+
 ## Problem
 
 TigerTube currently uses a single hard-coded YouTube Data API key

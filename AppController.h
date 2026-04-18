@@ -26,6 +26,7 @@
     NSPopUpButton* qualityPopup;    /* weak */
     NSTableView* tableView;       /* weak (retained by NSScrollView) */
     BOOL searching;
+    BOOL isShowingKeyPrompt;      /* coalesces back-to-back 403s */
     TTPlayerWindowController* playerController;  /* strong, current player */
     NSString* proxyHost;          /* strong */
     BOOL proxyDiscovered;         /* YES once Bonjour resolved a proxy */

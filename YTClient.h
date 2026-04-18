@@ -15,9 +15,19 @@
 #include <curl/curl.h>
 
 @interface YTClient : NSObject {
-    NSString* apiKey;
+    NSString* defaultAPIKey;
     NSString* caBundlePath;
     CURL* curl;
+
+    /* Set by -currentAPIKey each time it's called, so -httpGet: can
+       record which key was in use if the request fails. */
+    BOOL currentKeyIsOverride;
+
+    /* Populated on a failed searchVideos: call, cleared at the start
+       of each call.  Accessors below. */
+    int lastHTTPStatus;
+    NSString* lastErrorReason;
+    BOOL lastErrorUsedOverrideKey;
 }
 
 // caPath must point to a PEM CA bundle (e.g. the bundled cacert.pem).
@@ -32,6 +42,12 @@
 //   viewCount     NSString (decimal, e.g. "12345678") -- may be absent
 // Returns nil on error.  Prints per-phase timing to stderr.
 - (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults;
+
+/* After a failed searchVideos:, these reflect the last HTTP response.
+   Return 0 / nil / NO if the last call succeeded or failed non-HTTP. */
+- (int)lastHTTPStatus;
+- (NSString*)lastErrorReason;    /* e.g. "quotaExceeded", "keyInvalid" */
+- (BOOL)lastErrorUsedOverrideKey;
 
 @end
 

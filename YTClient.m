@@ -32,6 +32,9 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
 @interface YTClient (Private)
 - (NSString*)urlEncode:(NSString*)s;
 - (NSString*)httpGet:(NSString*)url bytes:(size_t*)outBytes;
+- (NSString*)currentAPIKey;
+- (void)resetLastError;
+- (void)recordErrorBody:(const char*)body length:(size_t)len;
 @end
 
 @implementation YTClient
@@ -39,8 +42,12 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
 - (id)initWithAPIKey:(NSString*)key caBundlePath:(NSString*)caPath {
     self = [super init];
     if (self != nil) {
-        apiKey = [key retain];
+        defaultAPIKey = [key retain];
         caBundlePath = [caPath retain];
+        currentKeyIsOverride = NO;
+        lastHTTPStatus = 0;
+        lastErrorReason = nil;
+        lastErrorUsedOverrideKey = NO;
         curl = curl_easy_init();
         if (curl == NULL) {
             [self release];
@@ -60,9 +67,68 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
         curl_easy_cleanup(curl);
         curl = NULL;
     }
-    [apiKey release];
+    [defaultAPIKey release];
     [caBundlePath release];
+    [lastErrorReason release];
     [super dealloc];
+}
+
+- (int)lastHTTPStatus { return lastHTTPStatus; }
+- (NSString*)lastErrorReason { return lastErrorReason; }
+- (BOOL)lastErrorUsedOverrideKey { return lastErrorUsedOverrideKey; }
+
+- (void)resetLastError {
+    lastHTTPStatus = 0;
+    [lastErrorReason release];
+    lastErrorReason = nil;
+    lastErrorUsedOverrideKey = NO;
+}
+
+/* Reads ~/.tigertube/youtube-api-key.txt if present and non-empty
+   (after whitespace trim); otherwise returns the default key passed
+   at init time.  Also sets currentKeyIsOverride so -httpGet: can
+   stash it into lastErrorUsedOverrideKey if the request fails. */
+- (NSString*)currentAPIKey {
+    NSString* path = [@"~/.tigertube/youtube-api-key.txt"
+                          stringByExpandingTildeInPath];
+    NSError* err = nil;
+    NSString* contents = [NSString stringWithContentsOfFile:path
+                                                   encoding:NSUTF8StringEncoding
+                                                      error:&err];
+    if (contents != nil) {
+        NSString* trimmed = [contents stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if ([trimmed length] > 0) {
+            currentKeyIsOverride = YES;
+            return trimmed;
+        }
+    }
+    currentKeyIsOverride = NO;
+    return defaultAPIKey;
+}
+
+/* Parse error.errors[0].reason from a YouTube Data API v3 error body
+   and stash it in lastErrorReason. Leaves it nil if the body doesn't
+   parse or doesn't match the expected shape. */
+- (void)recordErrorBody:(const char*)body length:(size_t)len {
+    if (body == NULL || len == 0) return;
+    NSString* text = [[[NSString alloc] initWithBytes:body
+                                                length:len
+                                              encoding:NSUTF8StringEncoding]
+                         autorelease];
+    if (text == nil) return;
+    id parsed = [text JSONValue];
+    if (![parsed isKindOfClass:[NSDictionary class]]) return;
+    NSDictionary* errDict = [(NSDictionary*)parsed objectForKey:@"error"];
+    if (![errDict isKindOfClass:[NSDictionary class]]) return;
+    NSArray* errs = [errDict objectForKey:@"errors"];
+    if (![errs isKindOfClass:[NSArray class]] || [errs count] == 0) return;
+    NSDictionary* first = [errs objectAtIndex:0];
+    if (![first isKindOfClass:[NSDictionary class]]) return;
+    NSString* reason = [first objectForKey:@"reason"];
+    if (![reason isKindOfClass:[NSString class]]) return;
+    [lastErrorReason release];
+    lastErrorReason = [reason copy];
 }
 
 - (NSString*)urlEncode:(NSString*)s {
@@ -97,6 +163,9 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
     if (httpCode != 200) {
         fprintf(stderr, "YTClient: HTTP %ld\n", httpCode);
         fprintf(stderr, "body: %.*s\n", (int)buf.size, buf.data);
+        lastHTTPStatus = (int)httpCode;
+        lastErrorUsedOverrideKey = currentKeyIsOverride;
+        [self recordErrorBody:buf.data length:buf.size];
         free(buf.data);
         return nil;
     }
@@ -113,10 +182,11 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
 }
 
 - (NSArray*)searchVideos:(NSString*)query maxResults:(int)maxResults {
+    [self resetLastError];
     NSString* encoded = [self urlEncode:query];
     NSString* searchURL = [NSString stringWithFormat:
         @"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=%d&q=%@&key=%@",
-        maxResults, encoded, apiKey];
+        maxResults, encoded, [self currentAPIKey]];
 
     /* --- /search: fetch --- */
     size_t searchBytes = 0;
@@ -188,7 +258,7 @@ static size_t YTWriteCallback(void* ptr, size_t size, size_t nmemb, void* userda
     NSString* idsCSV = [videoIds componentsJoinedByString:@","];
     NSString* videosURL = [NSString stringWithFormat:
         @"https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=%@&key=%@",
-        idsCSV, apiKey];
+        idsCSV, [self currentAPIKey]];
 
     size_t videosBytes = 0;
     NSDate* t2 = [NSDate date];
