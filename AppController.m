@@ -295,7 +295,7 @@ static const int TT_AUDIO_CHANNELS = 2;
     NSPopUpButton* qPop = [[NSPopUpButton alloc] initWithFrame:
         NSMakeRect(x, rowY, qPopW, controlsH)];
     [qPop addItemsWithTitles:[NSArray arrayWithObjects:
-        @"2", @"3", @"4", @"5", @"6", @"7", @"8", nil]];
+        @"1", @"2", @"3", @"4", @"5", @"6", @"7", @"8", nil]];
     [qPop selectItemWithTitle:@"4"];
     [qPop setAutoresizingMask:NSViewMinYMargin];
     [content addSubview:qPop];

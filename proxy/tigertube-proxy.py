@@ -391,7 +391,7 @@ def build_video_cmd(source, t, w, h, br, fps, g, q, crop=None):
 
     Bitrate mode: pass `br` and leave `q` as None to get CBR-ish
     output with `-b:v / -maxrate / -bufsize`.
-    Quality mode: pass `q` (2-31, lower = better) and it overrides
+    Quality mode: pass `q` (1-31, lower = better) and it overrides
     the bitrate knobs with `-q:v N`, giving constant-quality VBR.
     Quality mode is preferred for LAN streaming where bandwidth
     isn't the bottleneck -- bitrate floats to what the content
@@ -743,7 +743,7 @@ def GET_index(handler):
         "Video (raw MPEG-1 elementary stream):\n"
         "  GET /v/yt/<id>?t=&w=&h=&br=&fps=&g=&q=&crop=\n"
         "  GET /v/file?path=<abs>&t=&w=&h=&br=&fps=&g=&q=&crop=\n"
-        "  (q=N uses constant-quality VBR and overrides br=; 2-31, lower=better)\n"
+        "  (q=N uses constant-quality VBR and overrides br=; 1-31, lower=better)\n"
         "  (crop=auto probes for baked pillarbox/letterbox bars; slower first frame.\n"
         "   crop=W:H:X:Y uses a literal crop rectangle. Omit for no crop.)\n"
         "\n"
