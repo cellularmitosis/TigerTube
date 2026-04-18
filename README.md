@@ -95,6 +95,8 @@ for the full list. Highlights:
 - 600 MHz iMac G3 (PowerPC G3, no AltiVec, ATI Rage 128 Pro, 10.4)
 
 320x240 is rock solid.  400x300 will drop some frames but is watchable.
+Video is drawn using OpenGL, so fullscreen scaling is free (press "f"),
+even on a Rage 128 Pro.
 
 Should work on any PowerPC Mac running 10.4 or later.  This release is
 intended for G3 processors (MPEG-1 video at small resolutions, uncompressed audio).
