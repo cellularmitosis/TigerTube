@@ -6,5 +6,5 @@ __pycache__/
 *.mode2v3
 *.perspectivev3
 .DS_Store
-Secrets.h
+src/Secrets.h
 .claude/

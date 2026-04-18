@@ -64,7 +64,7 @@
 		2B4C481B2F8324CD00B5DE08 /* SBJsonWriter.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = SBJsonWriter.h; sourceTree = "<group>"; };
 		2B4C481C2F8324CD00B5DE08 /* SBJsonWriter.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = SBJsonWriter.m; sourceTree = "<group>"; };
 		2B4C48272F83283100B5DE08 /* TigerCompat.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = TigerCompat.h; sourceTree = "<group>"; };
-		32CA4F630368D1EE00C91783 /* TigerTube_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TigerTube_Prefix.pch; sourceTree = "<group>"; };
+		32CA4F630368D1EE00C91783 /* TigerTube_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TigerTube_Prefix.pch; sourceTree = SOURCE_ROOT; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* TigerTube.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TigerTube.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B4C490B2F840001000001AA /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = libs/openssl/libssl.a; sourceTree = "<group>"; };
@@ -168,7 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				080E96DDFE201D6D7F000001 /* Classes */,
-				29B97315FDCFA39411CA2CEA /* Other Sources */,
+				29B97315FDCFA39411CA2CEA /* src */,
 				29B97317FDCFA39411CA2CEA /* Resources */,
 				29B97323FDCFA39411CA2CEA /* Frameworks */,
 				2B4C49062F840001000001AA /* libs */,
@@ -190,7 +190,7 @@
 			name = libs;
 			sourceTree = "<group>";
 		};
-		29B97315FDCFA39411CA2CEA /* Other Sources */ = {
+		29B97315FDCFA39411CA2CEA /* src */ = {
 			isa = PBXGroup;
 			children = (
 				2B4C48272F83283100B5DE08 /* TigerCompat.h */,
@@ -218,7 +218,7 @@
 				2B4C4B222F910022000001AA /* TTScrubSlider.m */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 			);
-			name = "Other Sources";
+			path = src;
 			sourceTree = "<group>";
 		};
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
@@ -227,10 +227,18 @@
 				8D1107310486CEB800E47090 /* Info.plist */,
 				089C165CFE840E0CC02AAC07 /* InfoPlist.strings */,
 				29B97318FDCFA39411CA2CEA /* MainMenu.nib */,
+				2B4C4C002F930001000001AA /* icons */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
+		2B4C4C002F930001000001AA /* icons */ = {
+			isa = PBXGroup;
+			children = (
 				2B4C4B232F910023000001AA /* play.png */,
 				2B4C4B242F910024000001AA /* pause.png */,
 			);
-			name = Resources;
+			path = icons;
 			sourceTree = "<group>";
 		};
 		29B97323FDCFA39411CA2CEA /* Frameworks */ = {

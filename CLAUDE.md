@@ -47,7 +47,7 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
   — LaunchServices swallows stderr.
 - `tiger-rsync.sh` preserves source mtimes (archive mode); if Xcode's
   dependency tracking doesn't notice a header change,
-  `ssh imacg3 "touch tmp/TigerTube/Foo.h"` and rebuild.
+  `ssh imacg3 "touch tmp/TigerTube/src/Foo.h"` and rebuild.
 - The proxy runs on **uranium** (this laptop), advertised over mDNS as
   `_tigertube-proxy._tcp` on port 5002. The client auto-discovers it;
   there is no hardcoded IP to update.
@@ -60,16 +60,19 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
 
 ## Repo layout
 
-- `*.m` / `*.h` at the root — Cocoa app sources
-- `main.m`, `AppController.{h,m}` — app entry + search UI
-- `YTClient.{h,m}` — YouTube Data API v3 client (libcurl + SBJson)
-- `TTPlayerWindowController.{h,m}` — orchestrates playback, owns the
-  two fetch pthreads and the 30 Hz display timer
-- `TTPlayerView.{h,m}` — NSOpenGLView, YUV→RGB on the GPU
-- `TTVideoDecoder.{h,m}` — libmpeg2 wrapper, emits UYVY via
-  `mpeg2convert_uyvy`
-- `TTAudioPlayer.{h,m}` — Default Output AudioUnit + s16be ring buffer
-- `ThumbnailCache.{h,m}` — background-fetches search result thumbnails
+- `src/` — all Cocoa app sources (.m / .h)
+  - `main.m`, `AppController.{h,m}` — app entry + search UI
+  - `YTClient.{h,m}` — YouTube Data API v3 client (libcurl + SBJson)
+  - `TTPlayerWindowController.{h,m}` — orchestrates playback, owns
+    the two fetch pthreads and the 30 Hz display timer
+  - `TTPlayerView.{h,m}` — NSOpenGLView, YUV→RGB on the GPU
+  - `TTVideoDecoder.{h,m}` — libmpeg2 wrapper, emits UYVY via
+    `mpeg2convert_uyvy`
+  - `TTAudioPlayer.{h,m}` — Default Output AudioUnit + s16be ring
+    buffer
+  - `ThumbnailCache.{h,m}` — background-fetches search result
+    thumbnails
+- `icons/` — `play.png`, `pause.png` (transport-bar glyphs)
 - `SBJson-2.2.3/` — vendored JSON (Tiger-compatible; don't replace)
 - `libs/{curl,openssl,libmpeg2}/` — vendored native deps, built for ppc
 - `proxy/tigertube-proxy.py` — Flask transcoding proxy (modern host)
@@ -157,7 +160,7 @@ ring is saturated.
   1–2 s to first-frame latency.
 - **Xcode dependency tracking can miss rsync'd headers** because
   archive-mode rsync preserves source mtimes. If a `.h` change doesn't
-  trigger recompilation, `ssh imacg3 "touch tmp/TigerTube/Foo.h"` and
+  trigger recompilation, `ssh imacg3 "touch tmp/TigerTube/src/Foo.h"` and
   rebuild.
 
 ## Feature workflow
