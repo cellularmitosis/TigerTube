@@ -24,6 +24,7 @@
     NSTextField* searchField;     /* weak (retained by view hierarchy) */
     NSPopUpButton* resolutionPopup; /* weak */
     NSPopUpButton* qualityPopup;    /* weak */
+    NSPopUpButton* sourcePopup;     /* weak; caps yt-dlp source height */
     NSTableView* tableView;       /* weak (retained by NSScrollView) */
     BOOL searching;
     BOOL isShowingKeyPrompt;      /* coalesces back-to-back 403s */
