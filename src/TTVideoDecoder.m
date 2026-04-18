@@ -6,13 +6,28 @@
 #import "TTVideoDecoder.h"
 #include <mpeg2dec/mpeg2.h>
 #include <mpeg2dec/mpeg2convert.h>
+#include <sys/sysctl.h>
 
 @implementation TTVideoDecoder
 
 - (id)init {
     self = [super init];
     if (self != nil) {
-        mpeg2_accel(0);  /* no AltiVec on G3 */
+        /* Detect AltiVec via sysctl rather than MPEG2_ACCEL_DETECT:
+           libmpeg2's PPC probe executes an AltiVec insn unguarded on
+           Darwin, which SIGILLs on G3.  sysctl is safe on both. */
+        static int accel_logged = 0;
+        int has_altivec = 0;
+        size_t sz = sizeof(has_altivec);
+        sysctlbyname("hw.optional.altivec", &has_altivec, &sz, NULL, 0);
+        uint32_t accel = has_altivec ? MPEG2_ACCEL_PPC_ALTIVEC : 0;
+        mpeg2_accel(accel);
+        if (!accel_logged) {
+            fprintf(stderr, "TTVideoDecoder: mpeg2_accel=0x%x%s\n",
+                    accel,
+                    has_altivec ? " (AltiVec)" : " (none)");
+            accel_logged = 1;
+        }
         mpeg2dec_t* dec = mpeg2_init();
         if (dec == NULL) {
             fprintf(stderr, "TTVideoDecoder: mpeg2_init failed\n");

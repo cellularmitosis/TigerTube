@@ -93,7 +93,8 @@ ssh imacg3 "tail -60 ~/tmp/tigertube.log"
 - Build UI programmatically. The nib under
   `English.lproj/MainMenu.nib` is minimal on purpose — don't push UI
   back into it.
-- No AltiVec: the G3 doesn't have it. `mpeg2_accel(0)` is deliberate.
+- AltiVec is runtime-detected via `mpeg2_accel(MPEG2_ACCEL_DETECT)`:
+  G3 picks no accel, G4/G5 picks AltiVec. Single ppc binary serves both.
 - `-std=c99` + Obj-C, `-mmacosx-version-min=10.4`, `-arch ppc`. Don't
   use 10.5+ APIs (no blocks, no `@property`, no ARC, no
   `NSApplicationPresentationHideMenuBar` — we use Carbon's
