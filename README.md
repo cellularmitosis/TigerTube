@@ -84,8 +84,8 @@ for the full list. Highlights:
 - **Bonjour proxy discovery** — the client auto-finds the proxy on the
   LAN via `_tigertube-proxy._tcp` (mDNS). No hardcoded IPs.
 - **mplayer-style keyboard seeking** — `←`/`→` = ±15 s, `↓`/`↑` = ±60 s.
-- **Resolution + quality dropdowns** under the search field (240x180
-  through 640x480; MPEG-1 qscale 2–8).
+- **Resolution + quality dropdowns** under the search field (192x144
+  through 1344x1008; MPEG-1 qscale 2–8).
 - **Quality-mode (VBR) transcode** in the proxy — `q=N` for
   constant-quality VBR instead of CBR, avoiding pixelation spikes on
   high-motion frames.

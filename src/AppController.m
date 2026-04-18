@@ -264,12 +264,15 @@ static const int TT_AUDIO_CHANNELS = 2;
     [resLabel release];
     x += resLabelW;
 
-    float resPopW = 100.0f;
+    float resPopW = 150.0f;
     NSPopUpButton* resPop = [[NSPopUpButton alloc] initWithFrame:
         NSMakeRect(x, rowY, resPopW, controlsH)];
     [resPop addItemsWithTitles:[NSArray arrayWithObjects:
-        @"240x180", @"320x240", @"400x300", @"480x360",
-        @"560x420", @"640x480", nil]];
+        @"192x144", @"256x192", @"320x240", @"384x288",
+        @"448x336", @"512x384", @"576x432", @"640x480",
+        @"704x528", @"768x576", @"832x624", @"896x672",
+        @"960x720", @"1024x768", @"1088x816", @"1152x864",
+        @"1216x912", @"1280x960", @"1344x1008", nil]];
     [resPop selectItemWithTitle:@"320x240"];
     [resPop setAutoresizingMask:NSViewMinYMargin];
     [content addSubview:resPop];
