@@ -113,6 +113,7 @@ static void* audioThreadFunc(void* arg);
             duration:(int)durSec
                width:(int)w
               height:(int)h
+               vsync:(BOOL)vsync
 {
     self = [super init];
     if (self != nil) {
@@ -122,6 +123,7 @@ static void* audioThreadFunc(void* arg);
         duration = (durSec > 0) ? durSec : 0;
         initialWidth = (w > 0) ? w : 320;
         initialHeight = (h > 0) ? h : 240;
+        initialVSync = vsync;
         startTime = 0;
 
         videoDecoder = [[TTVideoDecoder alloc] init];
@@ -323,6 +325,7 @@ static void* audioThreadFunc(void* arg);
         NSMakeRect(0, TT_BAR_HEIGHT, W, H - TT_BAR_HEIGHT)];
     [playerView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
     [playerView setController:self];
+    [playerView setVSync:initialVSync];
     [content addSubview:playerView];
     [playerView release]; /* retained by superview */
 

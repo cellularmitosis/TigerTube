@@ -30,6 +30,10 @@
 /* Back-pointer for routing key events (f = fullscreen, ESC, q). */
 - (void)setController:(TTPlayerWindowController*)c;
 
+/* Toggle vsync on the GL context.  Off (default) = no wait on vblank,
+   lowest latency but may tear.  On = flushBuffer blocks until vblank. */
+- (void)setVSync:(BOOL)enabled;
+
 /* Call once when the video sequence header arrives. */
 - (void)setupTextureWithWidth:(unsigned int)w height:(unsigned int)h;
 

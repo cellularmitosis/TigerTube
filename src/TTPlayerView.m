@@ -62,13 +62,17 @@ static unsigned int nextPow2(unsigned int v) {
     [super dealloc];
 }
 
+- (void)setVSync:(BOOL)enabled {
+    long swapInterval = enabled ? 1 : 0;
+    [[self openGLContext] setValues:&swapInterval
+                      forParameter:NSOpenGLCPSwapInterval];
+}
+
 - (void)setupGL {
     [[self openGLContext] makeCurrentContext];
 
-    /* Disable vsync -- we pace off the audio clock, not the display. */
-    long swapInterval = 0;
-    [[self openGLContext] setValues:&swapInterval
-                      forParameter:NSOpenGLCPSwapInterval];
+    /* Default vsync off; owner can override via setVSync:. */
+    [self setVSync:NO];
 
     glEnable(GL_TEXTURE_2D);
     glGenTextures(1, &tex);

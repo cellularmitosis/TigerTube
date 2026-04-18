@@ -64,6 +64,9 @@
                                       size the window before the first
                                       decoded frame arrives */
     int initialHeight;
+    BOOL initialVSync;             /* user-selected vsync, applied to the
+                                      GL context right after the view is
+                                      created */
     volatile BOOL seeking;         /* drop repeated arrow-key presses
                                       while a seek is still in flight */
     volatile BOOL paused;          /* spacebar pause: AU is stopped, the
@@ -150,7 +153,8 @@
             audioURL:(NSString*)aURL
             duration:(int)durSec
                width:(int)w
-              height:(int)h;
+              height:(int)h
+               vsync:(BOOL)vsync;
 - (void)dealloc;
 
 /* Start playback. */

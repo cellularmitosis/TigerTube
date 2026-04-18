@@ -304,9 +304,37 @@ static const int TT_AUDIO_CHANNELS = 2;
     [content addSubview:qPop];
     qualityPopup = qPop; /* weak: retained by superview */
     [qPop release];
-    x += qPopW + 16.0f;
+    x += qPopW + 20.0f;
 
-    /* Drops label -- appears to the right of the quality popup while a
+    /* VSync label + checkbox.  Read at play time and passed to the
+       player's GL context; off (default) matches prior behavior. */
+    float vsLabelW = 48.0f;
+    NSTextField* vsLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(x, rowY, vsLabelW, controlsH)];
+    [vsLabel setStringValue:@"VSync:"];
+    [vsLabel setBezeled:NO];
+    [vsLabel setDrawsBackground:NO];
+    [vsLabel setEditable:NO];
+    [vsLabel setSelectable:NO];
+    [vsLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(vsLabel, rowY, controlsH, vsLabelW);
+    [content addSubview:vsLabel];
+    [vsLabel release];
+    x += vsLabelW;
+
+    float vsBoxW = 20.0f;
+    NSButton* vsBox = [[NSButton alloc] initWithFrame:
+        NSMakeRect(x, rowY, vsBoxW, controlsH)];
+    [vsBox setButtonType:NSSwitchButton];
+    [vsBox setTitle:@""];
+    [vsBox setState:NSOffState];
+    [vsBox setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:vsBox];
+    vsyncCheckbox = vsBox; /* weak: retained by superview */
+    [vsBox release];
+    x += vsBoxW + 16.0f;
+
+    /* Drops label -- appears to the right of the vsync checkbox while a
        player is open, hidden otherwise.  Wide enough for a 6-digit
        count ("999999 dropped frames" ~= 170 px at 13pt system).  Left
        edge is anchored by setAutoresizingMask NSViewMinYMargin just
@@ -846,13 +874,15 @@ static const int TT_AUDIO_CHANNELS = 2;
 
     NSNumber* durBox = [item objectForKey:@"durationSeconds"];
     int durSec = (durBox != nil) ? [durBox intValue] : 0;
+    BOOL vsyncOn = ([vsyncCheckbox state] == NSOnState);
     playerController = [[TTPlayerWindowController alloc]
         initWithTitle:title
              videoURL:vURL
              audioURL:aURL
              duration:durSec
                 width:width
-               height:height];
+               height:height
+                vsync:vsyncOn];
     if (playerController != nil) {
         [playerController play];
         [self startDropsPolling];

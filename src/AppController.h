@@ -24,8 +24,11 @@
     NSTextField* searchField;     /* weak (retained by view hierarchy) */
     NSPopUpButton* resolutionPopup; /* weak */
     NSPopUpButton* qualityPopup;    /* weak */
+    NSButton* vsyncCheckbox;        /* weak; passed to the player at play
+                                       time as the initial swap-interval
+                                       setting */
     NSTextField* dropsLabel;        /* weak; shows "N dropped frames"
-                                       to the right of qualityPopup,
+                                       to the right of vsyncCheckbox,
                                        hidden unless a player is open */
     NSTimer* dropsPollTimer;        /* strong (retained by run loop);
                                        updates dropsLabel every 0.25s
