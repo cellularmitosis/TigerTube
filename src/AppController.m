@@ -68,10 +68,29 @@ static const int TT_VIDEO_GOP      = 12;     /* I-frame every 0.5s at 24fps */
 static const int TT_AUDIO_RATE     = 44100;  /* Hz */
 static const int TT_AUDIO_CHANNELS = 2;
 
+/* "file:<path>" search prefix -- a developer back door that skips
+   YouTube entirely and streams a local file on the proxy host through
+   the existing transcode pipeline.  The extension whitelist lives
+   server-side in the proxy's _resolve_file_source (a mistyped or
+   malicious path is rejected with HTTP 400 rather than passed through
+   to ffmpeg).  See docs/features/file-source/. */
+static NSString* const kTTFileScheme = @"file:";
+
+/* If `query` starts with "file:", return the path portion (trimmed).
+   Returns nil for non-file queries or an empty path. */
+static NSString* TTParseFilePath(NSString* query) {
+    if (![query hasPrefix:kTTFileScheme]) return nil;
+    NSString* path = [query substringFromIndex:[kTTFileScheme length]];
+    path = [path stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return ([path length] > 0) ? path : nil;
+}
+
 @interface AppController (Private)
 - (void)buildWindow;
 - (void)performSearchInBackground:(NSString*)query;
 - (void)searchDidFinish:(NSArray*)newResults;
+- (void)handleFileSearch:(NSString*)filePath;
 - (int)rowIndexForVideoId:(NSString*)videoId;
 - (void)playVideoAtIndex:(int)index;
 - (void)handleAPIKey403WithReason:(NSString*)reason
@@ -430,12 +449,39 @@ static const int TT_AUDIO_CHANNELS = 2;
         return;
     }
 
+    /* file:<path> back-door -- synchronous, no YouTube round-trip. */
+    NSString* filePath = TTParseFilePath(query);
+    if (filePath != nil) {
+        [self handleFileSearch:filePath];
+        [query release];
+        return;
+    }
+
     searching = YES;
     [searchField setEnabled:NO];
 
     [NSThread detachNewThreadSelector:@selector(performSearchInBackground:)
                              toTarget:self
                            withObject:[query autorelease]];
+}
+
+- (void)handleFileSearch:(NSString*)filePath {
+    fprintf(stderr, "file: accepted \"%s\"\n", [filePath UTF8String]);
+
+    NSString* title = [filePath lastPathComponent];
+    NSMutableDictionary* row = [NSMutableDictionary dictionary];
+    [row setObject:@"file" forKey:@"kind"];
+    [row setObject:filePath forKey:@"filePath"];
+    [row setObject:title forKey:@"title"];
+    [row setObject:@"(local file)" forKey:@"channelTitle"];
+    [row setObject:[NSNumber numberWithInt:0]
+            forKey:@"durationSeconds"];
+    [row setObject:@"" forKey:@"duration"];
+
+    [results removeAllObjects];
+    [results addObject:row];
+    [tableView reloadData];
+    [tableView scrollRowToVisible:0];
 }
 
 - (void)performSearchInBackground:(NSString*)query {
@@ -776,6 +822,12 @@ static const int TT_AUDIO_CHANNELS = 2;
     NSDictionary* item = [results objectAtIndex:row];
     NSString* ident = [col identifier];
     if ([ident isEqualToString:@"thumb"]) {
+        /* file: rows have no thumbnail source -- return nil so the
+           image cell renders blank instead of kicking the cache. */
+        NSString* kind = [item objectForKey:@"kind"];
+        if ([kind isEqualToString:@"file"]) {
+            return nil;
+        }
         /* Lazy load: asking the cache kicks off a fetch if it's not
          * already cached.  Returns nil (blank cell) until the delegate
          * callback fires and we reload. */
@@ -817,13 +869,22 @@ static const int TT_AUDIO_CHANNELS = 2;
 - (void)playVideoAtIndex:(int)index {
     fprintf(stderr, "playVideoAtIndex: %d\n", index);
     NSDictionary* item = [results objectAtIndex:index];
+    NSString* kind = [item objectForKey:@"kind"];
+    if (kind == nil) kind = @"yt";
     NSString* videoId = [item objectForKey:@"videoId"];
+    NSString* filePath = [item objectForKey:@"filePath"];
     NSString* title = [item objectForKey:@"title"];
-    fprintf(stderr, "playVideoAtIndex: videoId=%s title=%s\n",
+    fprintf(stderr, "playVideoAtIndex: kind=%s videoId=%s filePath=%s title=%s\n",
+            [kind UTF8String],
             videoId ? [videoId UTF8String] : "(nil)",
+            filePath ? [filePath UTF8String] : "(nil)",
             title ? [title UTF8String] : "(nil)");
-    if (videoId == nil) {
+    if ([kind isEqualToString:@"yt"] && videoId == nil) {
         fprintf(stderr, "playVideoAtIndex: no videoId, aborting\n");
+        return;
+    }
+    if ([kind isEqualToString:@"file"] && filePath == nil) {
+        fprintf(stderr, "playVideoAtIndex: no filePath, aborting\n");
         return;
     }
 
@@ -862,15 +923,34 @@ static const int TT_AUDIO_CHANNELS = 2;
 
     /* src_h (YouTube source-height cap) is derived proxy-side from h=
        so the client doesn't need to know about yt-dlp's tier list. */
-    NSString* vURL = [NSString stringWithFormat:
-        @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d",
-        proxyHost, videoId,
-        width, height, qscale,
-        TT_VIDEO_FPS, TT_VIDEO_GOP];
-    NSString* aURL = [NSString stringWithFormat:
-        @"%@/a/yt/%@?rate=%d&ch=%d",
-        proxyHost, videoId,
-        TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
+    NSString* vURL;
+    NSString* aURL;
+    if ([kind isEqualToString:@"file"]) {
+        /* stringByAddingPercentEscapesUsingEncoding: is deprecated post
+           10.8 but is the 10.4-appropriate API; the modern replacement
+           stringByAddingPercentEncodingWithAllowedCharacters: is 10.9+. */
+        NSString* escaped = [filePath
+            stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+        vURL = [NSString stringWithFormat:
+            @"%@/v/file?path=%@&w=%d&h=%d&q=%d&fps=%d&g=%d",
+            proxyHost, escaped,
+            width, height, qscale,
+            TT_VIDEO_FPS, TT_VIDEO_GOP];
+        aURL = [NSString stringWithFormat:
+            @"%@/a/file?path=%@&rate=%d&ch=%d",
+            proxyHost, escaped,
+            TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
+    } else {
+        vURL = [NSString stringWithFormat:
+            @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d",
+            proxyHost, videoId,
+            width, height, qscale,
+            TT_VIDEO_FPS, TT_VIDEO_GOP];
+        aURL = [NSString stringWithFormat:
+            @"%@/a/yt/%@?rate=%d&ch=%d",
+            proxyHost, videoId,
+            TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
+    }
 
     NSNumber* durBox = [item objectForKey:@"durationSeconds"];
     int durSec = (durBox != nil) ? [durBox intValue] : 0;

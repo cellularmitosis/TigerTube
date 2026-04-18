@@ -23,51 +23,59 @@ entirely a client-side change.
 1. In the search field's action handler, detect a leading `file:`
    prefix **before** delegating to `YTClient`. If present, short-circuit
    the YouTube search path entirely.
-2. Validate the filename portion against a client-side extension
-   whitelist (`.mp4`, `.m4v`, `.mov`, `.mkv`, `.avi`, `.mpg`,
-   `.mpeg`, `.webm`, `.ogv`, `.ogm`, `.wmv`, `.flv`, `.ts`, `.m2ts`,
-   `.mts`, `.3gp`, `.3g2`). Case-insensitive.
-3. On pass, synthesize a single-row result dict tagged with
-   `kind=file` and push it into `results` exactly like a YouTube search
-   result — so the table cell, keyboard navigation, and click-to-play
-   all work unchanged.
-4. On click, `playVideoAtIndex:` branches on `kind`: for `yt` it
+2. Synthesize a single-row result dict tagged with `kind=file` for
+   any non-empty path and push it into `results` exactly like a
+   YouTube search result — so the table cell, keyboard navigation,
+   and click-to-play all work unchanged. No client-side extension
+   check (see "Why the proxy does the extension check" below).
+3. On click, `playVideoAtIndex:` branches on `kind`: for `yt` it
    builds the existing `/v/yt/<id>` URL, for `file` it builds
    `/v/file?path=…` with the same `w=&h=&q=&fps=&g=` params (and
    `/a/file?path=…` for audio).
-5. Validation failure (bad extension, empty path) logs to stderr and
-   leaves the results table as-is. No modal dialog — this is a
-   developer-facing shortcut, not user-facing UI.
+4. Empty-path input (`file:` alone or `file:   `) is dropped silently
+   in `TTParseFilePath`. Any bad extension or missing file shows up
+   as an HTTP error from the proxy at play time.
 
-Both input styles route through the same logic:
+All three input styles route through the same logic:
 
 - `file:foo.mp4` → proxy resolves `foo.mp4` relative to its own cwd.
-  The proxy's `_resolve_file_source` already does
-  `os.path.abspath(ident)` so this falls out for free.
+  The proxy's `_resolve_file_source` does `os.path.abspath(ident)`
+  so this falls out for free.
 - `file:/tmp/foo.mp4` → proxy treats it as absolute and runs the
   same `isfile()` check.
+- `file:~/foo.mp4` → proxy runs `os.path.expanduser(ident)` before
+  `abspath`, so `~` expands to the proxy's own `$HOME`. This is the
+  right anchor because the file is on the proxy host, not the
+  client.
 
 ## Design decisions (and rationale)
 
-### Why the client does the extension check, not the proxy
+### Why the proxy does the extension check, not the client
 
-The proxy already guarantees the file exists and is readable. The
-client-side check is a *UX safety rail*, not a security boundary — it
-stops `file:notes.txt` from becoming a request to the proxy that will
-fail later with ffmpeg demux errors and a cryptic stderr line. Keeping
-the check client-side means the error shows up at the moment of typing,
-not seconds later after a round-trip. The proxy's existing `isfile()`
-check handles the "file doesn't exist" case; the client's extension
-check handles the "this is plainly not a video file" case.
+Original draft put the whitelist in `AppController.m` as a UX rail.
+Moved to the proxy instead: the check is actually a *security
+boundary* — without it a mistyped or malicious `file:<path>` query
+can hand ffmpeg an arbitrary filesystem path (shell script, SSH key,
+`/etc/passwd`) and let it attempt to demux. The proxy is the process
+that actually opens the file, so the check belongs there. A single
+server-side whitelist is also the single source of truth — no risk
+of the client and proxy drifting on which extensions are allowed.
 
-### Why no modal error dialog on bad extension
+The client sends any non-empty `file:<path>` through; the proxy
+`aborts(400, "unsupported extension: .xyz")` for anything outside
+the whitelist. The 400 response surfaces in TigerTube's existing
+HTTP-error path the same way a 404 ("not a file") already does.
 
-This feature is a testing / diagnostic workaround. The user is the
-developer. Logging to stderr is how the rest of the app surfaces
-unusual conditions (`fprintf(stderr, …)` is already the established
-pattern per CLAUDE.md). A modal `NSAlert` is overkill; it also would
-have to be dismissed on every accidental typo. Silent-ish failure with
-a log line is correct here.
+### Why `~/` expands on the proxy, not the client
+
+The only sensible reference point for `~` is whichever user account
+owns the file. On this system that's always the proxy host — the
+client on imacg3/imacg52 can't open anything on uranium's
+filesystem regardless of whose home directory it thinks `~/`
+resolves to. So `TTParseFilePath` on the client passes `~/foo.mp4`
+through untouched and the proxy expands it via `os.path.expanduser`.
+If the client did its own expansion, `~/clips/test.mp4` would
+become `/Users/macuser/clips/test.mp4` and fail on the proxy.
 
 ### Why `file:` specifically, not a more elaborate syntax
 
@@ -113,13 +121,12 @@ time = 0 and the elapsed label counts up). Users testing this path
 know what file they're playing; they don't need the duration in the
 table row.
 
-### Why the whitelist lives on the client, hardcoded
+### Why the whitelist is hardcoded in the proxy, not configurable
 
-It's a typo filter. We're not trying to limit the user — ffmpeg will
-happily demux something esoteric like `.ts` or `.asf` that we didn't
-list, and the user can trivially extend the whitelist or remove the
-check. No config file, no runtime toggle, no env var. The list is
-eight lines in `AppController.m`.
+It's a coarse guard against ffmpeg being pointed at arbitrary files.
+We're not trying to limit the user — the list is easy to extend in
+`tigertube-proxy.py` and the user controls both the client and the
+proxy. No config file, no runtime toggle, no env var.
 
 ### Why re-use the existing Resolution / Quality / VSync popups
 
@@ -131,42 +138,27 @@ is a legitimate user-intent client knob.)
 
 ## Files touched
 
-- `src/AppController.h` — no signature changes expected. One new ivar
-  only if we hoist the extension list to a class member (unlikely).
-- `src/AppController.m` — all the real work:
+- `src/AppController.m` — most of the real work:
   - `searchAction:` (or a new private helper called from it): detect
-    `file:` prefix, validate, synthesize result row
+    `file:` prefix, synthesize result row
   - `playVideoAtIndex:`: branch on `kind` when building the URL
   - `tableView:objectValueForTableColumn:row:` (around line 782):
     skip the thumbnail fetch when `kind=file`
-- No proxy changes.
+- `proxy/tigertube-proxy.py` — add an extension whitelist to
+  `_resolve_file_source`. Reject unknown extensions with 400.
 - No other source files.
 
 ## Implementation steps
 
-### Step 1 — Extension whitelist + path parser
+### Step 1 — Path parser
 
-Add two file-scope helpers near the top of `AppController.m`:
+Add one file-scope helper near the top of `AppController.m`:
 
 ```objective-c
 static NSString* const kTTFileScheme = @"file:";
 
-/* Extension whitelist (lowercased, no leading dot).  Sole purpose
-   is to catch typos like "file:notes.txt" before we hit the proxy. */
-static NSArray* TTAllowedFileExtensions(void) {
-    static NSArray* s = nil;
-    if (s == nil) {
-        s = [[NSArray alloc] initWithObjects:
-            @"mp4", @"m4v", @"mov", @"mkv", @"avi",
-            @"mpg", @"mpeg", @"webm", @"ogv", @"ogm",
-            @"wmv", @"flv", @"ts", @"m2ts", @"mts",
-            @"3gp", @"3g2", nil];
-    }
-    return s;
-}
-
 /* If `query` starts with "file:", return the path portion (trimmed).
-   Returns nil for non-file queries.  Doesn't validate the extension. */
+   Returns nil for non-file queries or an empty path. */
 static NSString* TTParseFilePath(NSString* query) {
     if (![query hasPrefix:kTTFileScheme]) return nil;
     NSString* path = [query substringFromIndex:[kTTFileScheme length]];
@@ -174,16 +166,10 @@ static NSString* TTParseFilePath(NSString* query) {
                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
     return ([path length] > 0) ? path : nil;
 }
-
-/* True if `path` ends in one of the whitelisted extensions. */
-static BOOL TTIsAllowedFileExtension(NSString* path) {
-    NSString* ext = [[path pathExtension] lowercaseString];
-    return [TTAllowedFileExtensions() containsObject:ext];
-}
 ```
 
-No `NSRegularExpression` — that's 10.7+. Tiger's Foundation gives us
-`pathExtension` and array membership, which is all this needs.
+Extension validation lives server-side in the proxy — no
+`TTIsAllowedFileExtension` on the client.
 
 ### Step 2 — Short-circuit in `searchAction:`
 
@@ -203,12 +189,6 @@ Then add `-handleFileSearch:`:
 
 ```objective-c
 - (void)handleFileSearch:(NSString*)filePath {
-    if (!TTIsAllowedFileExtension(filePath)) {
-        fprintf(stderr,
-                "file: rejected \"%s\" (unsupported extension)\n",
-                [filePath UTF8String]);
-        return;
-    }
     fprintf(stderr, "file: accepted \"%s\"\n", [filePath UTF8String]);
 
     /* Synthesize a single-row result.  Keys match what the table
@@ -322,37 +302,45 @@ Manual, on imacg3 and/or imacg52:
 2. **Happy path, absolute.** `cp` the clip to `/tmp/test.mp4` on
    uranium. Type `file:/tmp/test.mp4`. Same behavior.
 
-3. **Path with spaces.** `cp` it to `/tmp/my test.mp4`. Type
+3. **Happy path, `~/` expansion.** `cp` the clip to
+   `~/clips/test.mp4` on uranium (the proxy host). Type
+   `file:~/clips/test.mp4`. Expect playback to work — the proxy
+   expands `~` via `os.path.expanduser`. The client sends `~`
+   literally (no client-side expansion), so this is fully a
+   server-side behavior test.
+
+4. **Path with spaces.** `cp` it to `/tmp/my test.mp4`. Type
    `file:/tmp/my test.mp4`. Expect the URL in stderr to show
    `%20` for the space, and playback to work.
 
-4. **Wrong extension.** Type `file:notes.txt`. Expect a stderr line
-   `file: rejected "notes.txt" (unsupported extension)` and the
-   results table unchanged (whatever YouTube results it showed
-   before are still visible).
+5. **Wrong extension.** Touch `/tmp/notes.txt`, type
+   `file:/tmp/notes.txt`. Expect the row to appear (no client-side
+   check), the click to fire, and the proxy to respond `400
+   unsupported extension: .txt`. TigerTube should log the HTTP
+   error and not crash.
 
-5. **Missing file.** Type `file:/tmp/does-not-exist.mp4`. Expect
-   the row to appear (extension is valid), the click to fire, and
-   the proxy to respond `404 not a file: …`. TigerTube should log
-   the HTTP error and not crash — matches behavior when a YouTube
-   stream 404s mid-playback.
+6. **Missing file.** Type `file:/tmp/does-not-exist.mp4`. Expect
+   the row to appear, the click to fire, and the proxy to respond
+   `404 not a file: …`. TigerTube should log the HTTP error and
+   not crash — matches behavior when a YouTube stream 404s
+   mid-playback.
 
-6. **Empty / whitespace.** Type `file:` or `file:  `. Expect no row
+7. **Empty / whitespace.** Type `file:` or `file:  `. Expect no row
    added, no stderr error (the query is effectively empty).
 
-7. **Resolution / Quality / VSync respected.** Set Resolution to
+8. **Resolution / Quality / VSync respected.** Set Resolution to
    640×480, Quality to 3, VSync on. Play `file:test.mp4`. Confirm
    in stderr (proxy side) that ffmpeg was invoked with `w=640 h=480
    q=3`, and that the client's GL context has swap interval = 1
    (check the `TTPlayerView: vsync=…` line if one exists, or just
    eyeball for tearing).
 
-8. **Switching back.** Do step 1, then type a normal YouTube search.
+9. **Switching back.** Do step 1, then type a normal YouTube search.
    Expect the file row to be cleared and replaced with YouTube
    results. No stale state.
 
-9. **Case-insensitive extension.** `file:/tmp/test.MP4` should
-   accept.
+10. **Case-insensitive extension.** `file:/tmp/test.MP4` should
+    accept.
 
 ## What's explicitly NOT in this feature
 
@@ -367,9 +355,10 @@ Manual, on imacg3 and/or imacg52:
   `rtsp:`. If we ever want those, they're separate features.
 - No persistence of recent file paths. Each session starts fresh.
 - No config file for the extension whitelist. It's hardcoded.
-- No proxy-side allowlist for filesystem paths. The proxy already
-  accepts any absolute path via `/v/file`; adding a path-allowlist
-  is a separate defense-in-depth concern, not part of this feature.
+- No proxy-side allowlist for filesystem *paths* (directory trees).
+  The proxy accepts any absolute path via `/v/file`; we only
+  restrict the file *extension*. A path-allowlist is a separate
+  defense-in-depth concern, not part of this feature.
 
 ## Open questions for the implementer
 

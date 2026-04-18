@@ -248,11 +248,29 @@ def pick_audio_format(info):
 
 # --- source resolution ---
 
+# Extensions ffmpeg is allowed to demux from the /v/file and /a/file
+# routes.  Lowercased, no leading dot.  This is a server-side guard --
+# the client accepts any "file:<path>" spelling and we reject anything
+# outside this list here, so a mistyped or malicious query can't ask
+# ffmpeg to open e.g. a shell script or a password file.
+_FILE_SOURCE_ALLOWED_EXTS = frozenset([
+    "mp4", "m4v", "mov", "mkv", "avi",
+    "mpg", "mpeg", "webm", "ogv", "ogm",
+    "wmv", "flv", "ts", "m2ts", "mts",
+    "3gp", "3g2",
+])
+
 def _resolve_file_source(ident):
-    """Shared 'file' branch: absolute-ize, assert existence."""
-    path = os.path.abspath(ident)
+    """Shared 'file' branch: expand ~, absolute-ize, assert existence,
+    check ext.  expanduser() resolves relative to the proxy process's
+    own $HOME, which is correct -- the file lives on this host, not
+    the client's."""
+    path = os.path.abspath(os.path.expanduser(ident))
     if not os.path.isfile(path):
         abort(404, f"not a file: {path}")
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext not in _FILE_SOURCE_ALLOWED_EXTS:
+        abort(400, f"unsupported extension: .{ext}")
     return path
 
 def resolve_video_source(kind, ident, src_h=YT_DEFAULT_SRC_HEIGHT):
