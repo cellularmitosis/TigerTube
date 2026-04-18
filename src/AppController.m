@@ -199,7 +199,11 @@ static NSString* TTParseFilePath(NSString* query) {
                                              defer:NO];
     [window setFrame:[[NSScreen mainScreen] visibleFrame] display:NO];
     [window setTitle:@"TigerTube"];
-    [window setMinSize:NSMakeSize(700, 400)];
+    /* 810: fits the controls row at its minimum layout (margins +
+       tightened labels + four popup/checkbox groups + drops label).
+       Any narrower and the drops-frames label clips -- harmless
+       since it's hidden until drops > 0, but annoying for debugging. */
+    [window setMinSize:NSMakeSize(820, 400)];
     [window setReleasedWhenClosed:NO];
 
     NSView* content = [window contentView];
@@ -269,7 +273,7 @@ static NSString* TTParseFilePath(NSString* query) {
     float rowY = cb.size.height - 2 * margin - searchH - controlsH;
     float x = margin;
 
-    float resLabelW = 78.0f;
+    float resLabelW = 72.0f;
     NSTextField* resLabel = [[NSTextField alloc] initWithFrame:
         NSMakeRect(x, rowY, resLabelW, controlsH)];
     [resLabel setStringValue:@"Resolution:"];
@@ -297,9 +301,9 @@ static NSString* TTParseFilePath(NSString* query) {
     [content addSubview:resPop];
     resolutionPopup = resPop; /* weak: retained by superview */
     [resPop release];
-    x += resPopW + 20.0f; /* gap before next label */
+    x += resPopW + 16.0f; /* gap before next label */
 
-    float qLabelW = 52.0f;
+    float qLabelW = 48.0f;
     NSTextField* qLabel = [[NSTextField alloc] initWithFrame:
         NSMakeRect(x, rowY, qLabelW, controlsH)];
     [qLabel setStringValue:@"Quality:"];
@@ -323,11 +327,43 @@ static NSString* TTParseFilePath(NSString* query) {
     [content addSubview:qPop];
     qualityPopup = qPop; /* weak: retained by superview */
     [qPop release];
-    x += qPopW + 20.0f;
+    x += qPopW + 16.0f;
+
+    /* Framerate popup.  "Source" (default) tells the proxy to omit
+       the fps= CFR filter so frames pass through at the source's
+       native rate.  Numeric rates are downconversion targets for
+       high-fps content: 24 generic cap, 25 = 50/2 PAL halving,
+       30 = 60/2 desktop-capture halving.  See
+       docs/features/framerate-popup/plan.md. */
+    float fpsLabelW = 72.0f;
+    NSTextField* fpsLabel = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(x, rowY, fpsLabelW, controlsH)];
+    [fpsLabel setStringValue:@"Framerate:"];
+    [fpsLabel setBezeled:NO];
+    [fpsLabel setDrawsBackground:NO];
+    [fpsLabel setEditable:NO];
+    [fpsLabel setSelectable:NO];
+    [fpsLabel setAutoresizingMask:NSViewMinYMargin];
+    ttCenterLabelInRow(fpsLabel, rowY, controlsH, fpsLabelW);
+    [content addSubview:fpsLabel];
+    [fpsLabel release];
+    x += fpsLabelW;
+
+    float fpsPopW = 85.0f;
+    NSPopUpButton* fpsPop = [[NSPopUpButton alloc] initWithFrame:
+        NSMakeRect(x, rowY, fpsPopW, controlsH)];
+    [fpsPop addItemsWithTitles:[NSArray arrayWithObjects:
+        @"Source", @"24", @"25", @"30", nil]];
+    [fpsPop selectItemWithTitle:@"Source"];
+    [fpsPop setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:fpsPop];
+    fpsPopup = fpsPop; /* weak: retained by superview */
+    [fpsPop release];
+    x += fpsPopW + 16.0f;
 
     /* VSync label + checkbox.  Read at play time and passed to the
        player's GL context; off (default) matches prior behavior. */
-    float vsLabelW = 48.0f;
+    float vsLabelW = 44.0f;
     NSTextField* vsLabel = [[NSTextField alloc] initWithFrame:
         NSMakeRect(x, rowY, vsLabelW, controlsH)];
     [vsLabel setStringValue:@"VSync:"];
@@ -918,8 +954,15 @@ static NSString* TTParseFilePath(NSString* query) {
     if (qParsed >= 2 && qParsed <= 31) {
         qscale = qParsed;
     }
-    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d\n",
-            width, height, qscale);
+    /* Framerate popup: "Source" => omit fps= so the proxy drops
+       the fps= CFR filter (source-rate passthrough).  Any other
+       title goes into fps= verbatim via %@, so "24" stays "24"
+       with no float-format surprises. */
+    NSString* fpsTitle = [fpsPopup titleOfSelectedItem];
+    BOOL useSourceFps  = [fpsTitle isEqualToString:@"Source"];
+    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d fps=%s\n",
+            width, height, qscale,
+            useSourceFps ? "Source" : [fpsTitle UTF8String]);
 
     /* src_h (YouTube source-height cap) is derived proxy-side from h=
        so the client doesn't need to know about yt-dlp's tier list. */
@@ -931,21 +974,37 @@ static NSString* TTParseFilePath(NSString* query) {
            stringByAddingPercentEncodingWithAllowedCharacters: is 10.9+. */
         NSString* escaped = [filePath
             stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-        vURL = [NSString stringWithFormat:
-            @"%@/v/file?path=%@&w=%d&h=%d&q=%d&fps=%d&g=%d",
-            proxyHost, escaped,
-            width, height, qscale,
-            TT_VIDEO_FPS, TT_VIDEO_GOP];
+        if (useSourceFps) {
+            vURL = [NSString stringWithFormat:
+                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&g=%d",
+                proxyHost, escaped,
+                width, height, qscale,
+                TT_VIDEO_GOP];
+        } else {
+            vURL = [NSString stringWithFormat:
+                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&fps=%@&g=%d",
+                proxyHost, escaped,
+                width, height, qscale,
+                fpsTitle, TT_VIDEO_GOP];
+        }
         aURL = [NSString stringWithFormat:
             @"%@/a/file?path=%@&rate=%d&ch=%d",
             proxyHost, escaped,
             TT_AUDIO_RATE, TT_AUDIO_CHANNELS];
     } else {
-        vURL = [NSString stringWithFormat:
-            @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%d&g=%d",
-            proxyHost, videoId,
-            width, height, qscale,
-            TT_VIDEO_FPS, TT_VIDEO_GOP];
+        if (useSourceFps) {
+            vURL = [NSString stringWithFormat:
+                @"%@/v/yt/%@?w=%d&h=%d&q=%d&g=%d",
+                proxyHost, videoId,
+                width, height, qscale,
+                TT_VIDEO_GOP];
+        } else {
+            vURL = [NSString stringWithFormat:
+                @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%@&g=%d",
+                proxyHost, videoId,
+                width, height, qscale,
+                fpsTitle, TT_VIDEO_GOP];
+        }
         aURL = [NSString stringWithFormat:
             @"%@/a/yt/%@?rate=%d&ch=%d",
             proxyHost, videoId,

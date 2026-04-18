@@ -24,6 +24,10 @@
     NSTextField* searchField;     /* weak (retained by view hierarchy) */
     NSPopUpButton* resolutionPopup; /* weak */
     NSPopUpButton* qualityPopup;    /* weak */
+    NSPopUpButton* fpsPopup;        /* weak; "Source" => omit fps= from
+                                       proxy URL (source-rate passthrough),
+                                       else numeric rate ("24", "25", "30")
+                                       goes into fps= verbatim */
     NSButton* vsyncCheckbox;        /* weak; passed to the player at play
                                        time as the initial swap-interval
                                        setting */

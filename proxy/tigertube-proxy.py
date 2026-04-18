@@ -448,8 +448,10 @@ def build_video_cmd(source, t, w, h, br, fps, g, q, crop=None):
         vf += f"crop={crop},"
     vf += (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
-           f"setpts=PTS-STARTPTS,"
-           f"fps={fps}")
+           f"setpts=PTS-STARTPTS")
+    # fps= CFR filter is opt-in: omit for source-rate passthrough.
+    if fps is not None:
+        vf += f",fps={fps}"
     cmd += [
         "-i", source,
         "-an",
@@ -636,7 +638,13 @@ def parse_video_params(query_dict):
     w   = int(query_dict.get("w",     V_DEFAULT_W))
     h   = int(query_dict.get("h",     V_DEFAULT_H))
     br  = query_dict.get("br",        V_DEFAULT_BR)
-    fps = int(query_dict.get("fps",   V_DEFAULT_FPS))
+    # Missing fps => source rate: build_video_cmd will omit the
+    # fps= CFR filter so frames pass through at their native
+    # timing.  float() so that the proxy accepts fractional rates
+    # (23.976, 29.97) from out-of-band curl callers, even though
+    # the TigerTube client's popup only ships integers.
+    fps_arg = query_dict.get("fps")
+    fps = float(fps_arg) if fps_arg is not None else None
     g   = int(query_dict.get("g",     V_DEFAULT_G))
     # Quality mode is opt-in: only used when the client passes q=.
     # When present it overrides br= inside build_video_cmd.
