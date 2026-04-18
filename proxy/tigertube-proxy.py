@@ -43,13 +43,16 @@ import time
 import http.server
 import urllib.parse
 
-# Bonjour / mDNS advertisement is optional -- proxy still works without it
-# (clients fall back to manual URL).  `pip install zeroconf` to enable.
+# Bonjour / mDNS advertisement is required -- the TigerTube client has
+# no manual-URL UI, so if we don't advertise, the client can't find us.
 try:
     from zeroconf import ServiceInfo, Zeroconf
-    _zeroconf_available = True
 except ImportError:
-    _zeroconf_available = False
+    sys.stderr.write(
+        "error: the 'zeroconf' python package is required.\n"
+        "       install it with:  pip3 install zeroconf\n"
+    )
+    sys.exit(1)
 
 # --- config ---
 
@@ -665,13 +668,7 @@ def _primary_local_ip():
 
 def register_bonjour():
     """Advertise this proxy over mDNS as _tigertube-proxy._tcp, so the
-    TigerTube client can auto-discover it on the LAN instead of needing
-    a hardcoded URL.  No-op if the `zeroconf` package isn't installed."""
-    if not _zeroconf_available:
-        print("--- bonjour: zeroconf not installed, skipping advertisement "
-              "(pip install zeroconf to enable)", flush=True)
-        return None, None
-
+    TigerTube client can auto-discover it on the LAN."""
     hostname = socket.gethostname().split(".")[0]
     ip = _primary_local_ip()
     info = ServiceInfo(
@@ -699,6 +696,5 @@ if __name__ == "__main__":
         pass
     finally:
         server.server_close()
-        if zc is not None:
-            zc.unregister_service(info)
-            zc.close()
+        zc.unregister_service(info)
+        zc.close()
