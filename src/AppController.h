@@ -31,6 +31,9 @@
     NSButton* vsyncCheckbox;        /* weak; passed to the player at play
                                        time as the initial swap-interval
                                        setting */
+    NSButton* cropCheckbox;         /* weak; when on, appends &crop=auto
+                                       to the video URL (proxy runs
+                                       cropdetect to strip baked bars) */
     NSTextField* dropsLabel;        /* weak; shows "N dropped frames"
                                        to the right of vsyncCheckbox,
                                        hidden unless a player is open */

@@ -446,8 +446,13 @@ def build_video_cmd(source, t, w, h, br, fps, g, q, crop=None):
     vf = ""
     if crop:
         vf += f"crop={crop},"
+    # scale= alone (no pad=) treats w:h as a bounding box: output
+    # dimensions preserve source aspect and are <= w:h on each axis.
+    # The client's TTPlayerView already letterboxes on any
+    # view-aspect vs. stream-aspect mismatch, so we don't need the
+    # server to bake black bars into the stream.  Dropping pad= also
+    # shrinks the decoder's per-frame workload for non-4:3 sources.
     vf += (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
-           f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
            f"setpts=PTS-STARTPTS")
     # fps= CFR filter is opt-in: omit for source-rate passthrough.
     if fps is not None:

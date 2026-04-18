@@ -199,11 +199,11 @@ static NSString* TTParseFilePath(NSString* query) {
                                              defer:NO];
     [window setFrame:[[NSScreen mainScreen] visibleFrame] display:NO];
     [window setTitle:@"TigerTube"];
-    /* 810: fits the controls row at its minimum layout (margins +
-       tightened labels + four popup/checkbox groups + drops label).
+    /* 900: fits the controls row at its minimum layout (margins +
+       tightened labels + five popup/checkbox groups + drops label).
        Any narrower and the drops-frames label clips -- harmless
        since it's hidden until drops > 0, but annoying for debugging. */
-    [window setMinSize:NSMakeSize(820, 400)];
+    [window setMinSize:NSMakeSize(900, 400)];
     [window setReleasedWhenClosed:NO];
 
     NSView* content = [window contentView];
@@ -388,6 +388,24 @@ static NSString* TTParseFilePath(NSString* query) {
     vsyncCheckbox = vsBox; /* weak: retained by superview */
     [vsBox release];
     x += vsBoxW + 16.0f;
+
+    /* Crop toggle -- when checked, adds ?crop=auto to the video URL
+       so the proxy runs cropdetect and strips baked pillarbox /
+       letterbox bars from the source.  Off by default because the
+       probe adds 1-2 s to first-frame latency.  Uses the checkbox's
+       own title rather than a sibling NSTextField (one less widget,
+       and puts the label in the button's hit area). */
+    float cropBoxW = 62.0f;
+    NSButton* cropBox = [[NSButton alloc] initWithFrame:
+        NSMakeRect(x, rowY, cropBoxW, controlsH)];
+    [cropBox setButtonType:NSSwitchButton];
+    [cropBox setTitle:@"Crop"];
+    [cropBox setState:NSOffState];
+    [cropBox setAutoresizingMask:NSViewMinYMargin];
+    [content addSubview:cropBox];
+    cropCheckbox = cropBox; /* weak: retained by superview */
+    [cropBox release];
+    x += cropBoxW + 16.0f;
 
     /* Drops label -- appears to the right of the vsync checkbox while a
        player is open, hidden otherwise.  Wide enough for a 6-digit
@@ -960,9 +978,15 @@ static NSString* TTParseFilePath(NSString* query) {
        with no float-format surprises. */
     NSString* fpsTitle = [fpsPopup titleOfSelectedItem];
     BOOL useSourceFps  = [fpsTitle isEqualToString:@"Source"];
-    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d fps=%s\n",
+    /* Crop checkbox: when on, appends ?crop=auto so the proxy runs
+       cropdetect to strip baked pillarbox / letterbox bars.  One
+       suffix reused by all four vURL branches below. */
+    BOOL cropOn = ([cropCheckbox state] == NSOnState);
+    NSString* cropSuffix = cropOn ? @"&crop=auto" : @"";
+    fprintf(stderr, "playVideoAtIndex: res=%dx%d q=%d fps=%s crop=%s\n",
             width, height, qscale,
-            useSourceFps ? "Source" : [fpsTitle UTF8String]);
+            useSourceFps ? "Source" : [fpsTitle UTF8String],
+            cropOn ? "auto" : "off");
 
     /* src_h (YouTube source-height cap) is derived proxy-side from h=
        so the client doesn't need to know about yt-dlp's tier list. */
@@ -976,16 +1000,16 @@ static NSString* TTParseFilePath(NSString* query) {
             stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
         if (useSourceFps) {
             vURL = [NSString stringWithFormat:
-                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&g=%d",
+                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&g=%d%@",
                 proxyHost, escaped,
                 width, height, qscale,
-                TT_VIDEO_GOP];
+                TT_VIDEO_GOP, cropSuffix];
         } else {
             vURL = [NSString stringWithFormat:
-                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&fps=%@&g=%d",
+                @"%@/v/file?path=%@&w=%d&h=%d&q=%d&fps=%@&g=%d%@",
                 proxyHost, escaped,
                 width, height, qscale,
-                fpsTitle, TT_VIDEO_GOP];
+                fpsTitle, TT_VIDEO_GOP, cropSuffix];
         }
         aURL = [NSString stringWithFormat:
             @"%@/a/file?path=%@&rate=%d&ch=%d",
@@ -994,16 +1018,16 @@ static NSString* TTParseFilePath(NSString* query) {
     } else {
         if (useSourceFps) {
             vURL = [NSString stringWithFormat:
-                @"%@/v/yt/%@?w=%d&h=%d&q=%d&g=%d",
+                @"%@/v/yt/%@?w=%d&h=%d&q=%d&g=%d%@",
                 proxyHost, videoId,
                 width, height, qscale,
-                TT_VIDEO_GOP];
+                TT_VIDEO_GOP, cropSuffix];
         } else {
             vURL = [NSString stringWithFormat:
-                @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%@&g=%d",
+                @"%@/v/yt/%@?w=%d&h=%d&q=%d&fps=%@&g=%d%@",
                 proxyHost, videoId,
                 width, height, qscale,
-                fpsTitle, TT_VIDEO_GOP];
+                fpsTitle, TT_VIDEO_GOP, cropSuffix];
         }
         aURL = [NSString stringWithFormat:
             @"%@/a/yt/%@?rate=%d&ch=%d",
