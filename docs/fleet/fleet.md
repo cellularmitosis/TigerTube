@@ -65,6 +65,11 @@ tiger.sh             # (or leopard.sh) list available packages
 tiger.sh foo-1.2.3   # install foo version 1.2.3 into /opt/foo-1.2.3
 ```
 
+After install, both scripts **symlink `/opt/<pkg>-<ver>/{bin,sbin}/*`
+into `/usr/local/{bin,sbin}/`** (which is on `macuser`'s PATH) — so
+`foo` Just Works after `tiger.sh foo-1.2.3` without needing to
+know or remember the versioned path.
+
 **What's already installed on a given host varies** — it depends
 on whichever project was last explored on that machine. Before
 assuming `bash` 4+, modern `curl` with current TLS, `perl` 5.36,
