@@ -136,7 +136,31 @@ find their actual ceilings.
 | pbookg42 | G4 1250 MHz | 512 KB | Leopard | ~34 | 27.2 |
 | emac | G4 1420 MHz | 256 KB | Tiger | ~31 | 21.8 |
 | mdd | 2×G4 1250 MHz | 256 KB×2 | Leopard | ~20 | 16.0 (dual) |
-| imacg52 | G5 2000 MHz | 512 KB | Tiger | ~60 | 30.0 |
+| imacg52 | G5 2000 MHz | 512 KB | Tiger | **~63** | **31.5** |
+
+imacg52's ceiling was initially listed as "~60" by extrapolation (the
+Phase B + extended-highres sweep topped out at 1600×1200@30 / 54.6
+Mpx/s with 83% CPU and 0 drops — no drops found so no ceiling
+measured). A second extended pass pushed harder and found the
+actual ceiling:
+
+| Geometry | fps_displayed | Mpx/s | CPU | Drops | |
+|---|---|---|---|---|---|
+| 1920×1088@30 | 27.3 | 57.0 | 85% | 0 | under |
+| 1920×1200@30 | 27.3 | 62.8 | 94% | 15 | **at ceiling** |
+| 1280×720@60 | 29.1 | 26.8 | 66% | 288 | display-capped |
+| 1920×1080@60 | 26.9 | 56.1 | 81% | 297 | display-capped |
+
+The 60 fps points reveal a separate finding: **the decoder can run
+much faster than the 30 Hz display timer**. At 1920×1080@60 the
+G5 decoded 54 frames/sec = **113 Mpx/s decoded** (with 81% CPU
+to spare), while fps_displayed was capped by the 30 Hz main-thread
+timer to 26.9 fps = 56 Mpx/s displayed. The "sustained playback
+ceiling" (decode *and* display keeping up) is 63 Mpx/s on this
+G5. The "raw decode ceiling" is at least 113 Mpx/s. For the
+auto-calibrate feature we care about the former — what the
+display pipeline can sustain, not what the decoder could do in
+isolation.
 
 ibookg32 was struck from the dataset post-hoc: the machine exhibited
 a hardware failure after the sweep completed (black display, no
@@ -322,10 +346,12 @@ to a single core — follow-up for another day.
    imacg3 run the same RAM speed, which is why the original
    memory-bandwidth theory failed and the cache-size theory
    survived.
-7. **Eight of eight large-grid points on imacg52 finished with
-   zero drops**, including 1600×1200@30 (54.6 Mpx/s, 83% CPU).
-   The G5 has massive headroom for any realistic playback
-   geometry.
+7. **imacg52 G5 playback ceiling is ~63 Mpx/s at 30 fps** (found
+   at 1920×1200@30, 15 drops). But the decoder itself sustains
+   **113 Mpx/s at 60 fps** (1920×1080@60, 81% CPU) — the 30 Hz
+   main-thread display timer is what caps observable Mpx/s during
+   normal playback. For any realistic YouTube geometry (720p and
+   below), the G5 has massive headroom regardless.
 
 ## Implications for the pixel-budget auto-calibrate feature
 

@@ -120,7 +120,7 @@ machine comes back cleanly.
 | pbookg42 | ~34 | Sweeping AltiVec advantage, DDR memory |
 | emac | ~31 | ~7% below pbookg42 despite 14% higher clock — memory subsystem favours pbookg42 |
 | mdd | ~20 | Dual-core regression; thread migration trashes per-core L2 |
-| imacg52 | ~60 | G5 + PC3200, only machine with visible headroom at 1600×1200 |
+| imacg52 | ~63 at 30 fps; ~113 decode-only at 60 fps | G5 + PC3200; display-timer-capped at 30 Hz, decoder can go 2× higher |
 
 ## Why the spec details matter (for reviewers of TigerTube perf work)
 
