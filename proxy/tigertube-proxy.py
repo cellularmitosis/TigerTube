@@ -698,6 +698,186 @@ def GET_video_file(handler):
 
 add_static_route("GET", "/v/file", GET_video_file)
 
+# --- routes: bench (research harness; see docs/features/decode-bench-harness/) ---
+
+# Synthetic lavfi sources the /bench endpoint will accept.  Fixed
+# allowlist rather than passing the source expression through: keeps
+# the surface explicit (a curious caller can't invoke arbitrary
+# filters) and documents what the harness is designed to test.
+BENCH_ALLOWED_SOURCES = frozenset({
+    "testsrc2", "testsrc", "mandelbrot", "life", "cellauto",
+    "gradients", "smptebars", "rgbtestsrc", "color",
+})
+
+def build_bench_cmd(source, w, h, fps, dur, rc, qv, bv, noise, g):
+    """Build an ffmpeg command for a synthetic benchmark stream.
+
+    Emits raw MPEG-1 ES on stdout -- same format as /v/yt/... and
+    /v/file, so the client's decode path is byte-identical to
+    production.  Caller has validated params via parse_bench_params.
+
+    rc == 'q'  : constant-quality VBR (-q:v qv).
+    rc == 'cbr': forced CBR (-b:v / -minrate / -maxrate / -bufsize bv).
+
+    noise is None (no overlay) or an int amplitude; appended as
+    `,noise=alls=N:allf=t` to the filter chain.
+
+    Mandelbrot's internal cache fails with a "not enough cache"
+    error around -t 180; keep dur well below that.  Our default
+    bench duration is 10s so this isn't an issue in practice.
+    """
+    # Input filter expression.  `color` is the one source that needs a
+    # color-selection parameter; default to gray to match our test runs.
+    if source == "color":
+        src_expr = f"color=c=gray:size={w}x{h}:rate={fps}"
+    else:
+        src_expr = f"{source}=size={w}x{h}:rate={fps}"
+    if noise is not None:
+        src_expr = f"{src_expr},noise=alls={noise}:allf=t"
+
+    cmd = [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "warning",
+        "-f", "lavfi",
+        "-i", src_expr,
+        "-t", str(dur),
+        "-an",
+        "-sn",
+        "-c:v", "mpeg1video",
+    ]
+    if rc == "q":
+        cmd += ["-q:v", str(qv)]
+    else:  # cbr
+        cmd += [
+            "-b:v", bv,
+            "-minrate", bv,
+            "-maxrate", bv,
+            "-bufsize", bv,
+        ]
+    effective_g = g if g is not None else max(1, int(round(fps)))
+    cmd += [
+        "-g", str(effective_g),
+        "-force_key_frames", "0",
+        "-f", "mpeg1video",
+        "pipe:1",
+    ]
+    return cmd
+
+def parse_bench_params(q):
+    """Parse /bench query params.  Returns a validated dict or aborts 400."""
+    source = q.get("source")
+    if source is None:
+        abort(400, "missing source")
+    if source not in BENCH_ALLOWED_SOURCES:
+        abort(400, f"unknown source: {source} "
+                   f"(allowed: {sorted(BENCH_ALLOWED_SOURCES)})")
+    try:
+        w   = int(q["w"])
+        h   = int(q["h"])
+        fps = float(q["fps"])
+        dur = int(q["dur"])
+    except (KeyError, ValueError):
+        abort(400, "required positive params: w, h, fps, dur")
+    if w <= 0 or h <= 0 or fps <= 0 or dur <= 0:
+        abort(400, "w, h, fps, dur must all be positive")
+    rc = q.get("rc", "q")
+    if rc not in ("q", "cbr"):
+        abort(400, f"rc must be 'q' or 'cbr' (got: {rc})")
+    qv = None
+    bv = None
+    if rc == "q":
+        try:
+            qv = int(q.get("qv", "4"))
+        except ValueError:
+            abort(400, "qv must be an integer")
+        if not (1 <= qv <= 31):
+            abort(400, "qv must be in 1..31")
+    else:  # cbr
+        bv = q.get("bv")
+        if bv is None:
+            abort(400, "rc=cbr requires bv (e.g., bv=2M or bv=500k)")
+    noise = None
+    noise_arg = q.get("noise")
+    if noise_arg is not None:
+        try:
+            noise = int(noise_arg)
+        except ValueError:
+            abort(400, "noise must be an integer")
+        if not (0 <= noise <= 100):
+            abort(400, "noise must be in 0..100")
+    g = None
+    g_arg = q.get("g")
+    if g_arg is not None:
+        try:
+            g = int(g_arg)
+        except ValueError:
+            abort(400, "g must be a positive integer")
+        if g <= 0:
+            abort(400, "g must be positive")
+    return {
+        "source": source, "w": w, "h": h, "fps": fps, "dur": dur,
+        "rc": rc, "qv": qv, "bv": bv, "noise": noise, "g": g,
+    }
+
+def GET_bench(handler):
+    _, q = parse_GET_path(handler.path)
+    p = parse_bench_params(q)
+    cmd = build_bench_cmd(
+        p["source"], p["w"], p["h"], p["fps"], p["dur"],
+        p["rc"], p["qv"], p["bv"], p["noise"], p["g"],
+    )
+    stream_ffmpeg(handler, cmd, content_type="video/mpeg")
+
+add_static_route("GET", "/bench", GET_bench)
+
+def build_bench_audio_cmd(dur, rate, ch):
+    """Silent PCM s16be, format-compatible with /a/yt/... and /a/file.
+
+    The decode-bench-harness needs an audio track so the A/V clock
+    still advances at real-time and the decoder's pacing / drop-
+    accounting keep working.  Silence is cheapest (anullsrc) and
+    doesn't affect video-decode measurements.  Extra query params
+    beyond `dur` are ignored, so the client can simply swap
+    '/bench?' -> '/bench-audio?' on the video URL and reuse the
+    query string verbatim."""
+    cl = "stereo" if ch == 2 else ("mono" if ch == 1 else f"{ch}c")
+    cmd = [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "warning",
+        "-f", "lavfi",
+        "-i", f"anullsrc=r={rate}:cl={cl}",
+        "-t", str(dur),
+        "-c:a", "pcm_s16be",
+        "-f", "s16be",
+        "pipe:1",
+    ]
+    return cmd
+
+def GET_bench_audio(handler):
+    _, q = parse_GET_path(handler.path)
+    try:
+        dur = int(q["dur"])
+    except (KeyError, ValueError):
+        abort(400, "dur required (positive integer seconds)")
+    if dur <= 0:
+        abort(400, "dur must be positive")
+    try:
+        rate = int(q.get("rate", A_DEFAULT_RATE))
+        ch = int(q.get("ch", A_DEFAULT_CH))
+    except ValueError:
+        abort(400, "rate / ch must be integers")
+    if rate <= 0 or ch <= 0:
+        abort(400, "rate / ch must be positive")
+    cmd = build_bench_audio_cmd(dur, rate, ch)
+    stream_ffmpeg(handler, cmd,
+                  content_type=f"audio/L16; rate={rate}; channels={ch}")
+
+add_static_route("GET", "/bench-audio", GET_bench_audio)
+
 # --- routes: audio ---
 
 def GET_audio_yt(handler):
@@ -786,6 +966,13 @@ def GET_index(handler):
         "  GET /probe/yt/<id>\n"
         "  GET /probe/file?path=<abs>\n"
         "\n"
+        "Bench (synthetic lavfi -> MPEG-1 ES; for decode-bench-harness):\n"
+        "  GET /bench?source=<name>&w=&h=&fps=&dur=&rc=(q|cbr)&qv=&bv=&noise=&g=\n"
+        "  source in: testsrc2, testsrc, mandelbrot, life, cellauto,\n"
+        "             gradients, smptebars, rgbtestsrc, color (gray)\n"
+        "  GET /bench-audio?dur=&rate=&ch=  -> silent PCM s16be, audio\n"
+        "      companion so A/V clock advances during bench runs.\n"
+        "\n"
         f"Defaults: video {V_DEFAULT_W}x{V_DEFAULT_H} @{V_DEFAULT_FPS}fps "
         f"{V_DEFAULT_BR} g={V_DEFAULT_G}; audio {A_DEFAULT_RATE}Hz "
         f"{A_DEFAULT_CH}ch s16be.\n"
@@ -826,7 +1013,10 @@ def register_bonjour():
         server=f"{hostname}.local.",
     )
     zc = Zeroconf()
-    zc.register_service(info)
+    # allow_name_change=True lets a quick restart work even if the
+    # previous instance's mDNS cache hasn't expired yet (instead of
+    # raising NonUniqueNameException, zeroconf appends " (2)" etc).
+    zc.register_service(info, allow_name_change=True)
     print(f"--- bonjour: advertised as '{info.name}' at {ip}:{PORT} "
           f"(server={info.server})", flush=True)
     return zc, info

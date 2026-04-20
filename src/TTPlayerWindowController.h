@@ -143,6 +143,13 @@
        Hysteresis thresholds live at file scope in the .m.  Decision
        logic is in -videoDecoder:didDecodeFrame:. */
     int decoderSkipMode;
+
+    /* Bench mode (decode-bench-harness).  When set, the stop path
+       emits an additional machine-greppable BENCH: line with
+       wall-clock decode/display metrics.  No other behaviour
+       changes here; the audio thread is skipped by -play when
+       audioURL is nil (which the bench-mode caller passes). */
+    BOOL benchMode;
 }
 
 /* Create and show a player window for the given video.
@@ -183,6 +190,10 @@
 /* Accessors for the owner (AppController) to poll and surface in UI. */
 - (NSWindow*)window;
 - (unsigned long)framesDropped;
+
+/* Enable bench-mode stats dump at stop time.  See decode-bench-harness
+   plan for the BENCH: line format. */
+- (void)setBenchMode:(BOOL)mode;
 
 @end
 

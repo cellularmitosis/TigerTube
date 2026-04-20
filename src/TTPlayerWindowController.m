@@ -453,6 +453,10 @@ static void* audioThreadFunc(void* arg);
     return framesDropped;
 }
 
+- (void)setBenchMode:(BOOL)mode {
+    benchMode = mode;
+}
+
 - (void)togglePause {
     if (audioPlayer == nil || seeking) {
         return;
@@ -648,13 +652,23 @@ static void* audioThreadFunc(void* arg);
 
     /* Retain self for the duration of the background threads */
     [self retain];
-    [self retain];
 
-    pthread_t videoTid, audioTid;
+    pthread_t videoTid;
     pthread_create(&videoTid, NULL, videoThreadFunc, self);
     pthread_detach(videoTid);
-    pthread_create(&audioTid, NULL, audioThreadFunc, self);
-    pthread_detach(audioTid);
+
+    if (audioURL != nil) {
+        [self retain];
+        pthread_t audioTid;
+        pthread_create(&audioTid, NULL, audioThreadFunc, self);
+        pthread_detach(audioTid);
+    } else {
+        /* No audio stream (bench mode).  Mark the stream done so the
+           end-of-playback detector in displayTimerFired: doesn't wait
+           forever on audioStreamDone, and the ring's empty check
+           passes immediately. */
+        audioStreamDone = YES;
+    }
 
     /* Start a timer to pull decoded frames and display them.
        ~30 Hz is plenty for 24fps video and keeps CPU overhead low. */
@@ -688,6 +702,26 @@ static void* audioThreadFunc(void* arg);
             "player stats: wall=%.1fs audio=%.1fs decoded=%lu displayed=%lu dropped=%lu cpu=%.1fs (%.0f%%)\n",
             wall, audioSec, decTotal, framesDisplayed, framesDropped,
             cpu, wall > 0 ? (cpu / wall) * 100.0 : 0.0);
+
+        if (benchMode) {
+            /* Decoded dimensions come from the decoder callback; fall
+               back to the initial sizes if the decoder never emitted a
+               frame (hard ceiling bust, or the stream errored out). */
+            unsigned int w = frameWidth != 0 ? frameWidth : (unsigned)initialWidth;
+            unsigned int h = frameHeight != 0 ? frameHeight : (unsigned)initialHeight;
+            double fps_decoded   = wall > 0 ? (double)decTotal / wall : 0.0;
+            double fps_displayed = wall > 0 ? (double)framesDisplayed / wall : 0.0;
+            double mpxs_decoded   = (double)w * (double)h * fps_decoded   / 1.0e6;
+            double mpxs_displayed = (double)w * (double)h * fps_displayed / 1.0e6;
+            fprintf(stderr,
+                "BENCH: wall=%.3f frames_decoded=%lu frames_displayed=%lu "
+                "frames_dropped=%lu width=%u height=%u "
+                "fps_decoded=%.3f fps_displayed=%.3f "
+                "mpxs_decoded=%.3f mpxs_displayed=%.3f cpu_pct=%.1f\n",
+                wall, decTotal, framesDisplayed, framesDropped,
+                w, h, fps_decoded, fps_displayed, mpxs_decoded, mpxs_displayed,
+                wall > 0 ? (cpu / wall) * 100.0 : 0.0);
+        }
     }
 
     stopRequested = YES;

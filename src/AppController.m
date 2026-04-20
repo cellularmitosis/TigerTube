@@ -144,9 +144,39 @@ static NSString* TTParseFilePath(NSString* query) {
     [super dealloc];
 }
 
+/* Scan argv for a flag of the form "--key=VALUE" and return VALUE, or
+   nil if absent.  Used by the bench-mode launch path. */
+static NSString* ttBenchArgValue(NSString* flagPrefix) {
+    NSArray* args = [[NSProcessInfo processInfo] arguments];
+    NSEnumerator* e = [args objectEnumerator];
+    NSString* arg;
+    while ((arg = [e nextObject]) != nil) {
+        if ([arg hasPrefix:flagPrefix]) {
+            return [arg substringFromIndex:[flagPrefix length]];
+        }
+    }
+    return nil;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
     fprintf(stderr, "=== TigerTube launched (build %s %s) ===\n", __DATE__, __TIME__);
     curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    /* Decode-bench-harness entry point.  When --bench-url=<url> is on
+       argv, skip the YouTube search UI entirely and open a player
+       window pointed directly at the given URL.  Optional
+       --bench-duration=<secs> auto-quits after N seconds.  See
+       docs/features/decode-bench-harness/plan.md. */
+    NSString* benchURL = ttBenchArgValue(@"--bench-url=");
+    if (benchURL != nil) {
+        double benchDur = 0.0;
+        NSString* durStr = ttBenchArgValue(@"--bench-duration=");
+        if (durStr != nil) {
+            benchDur = [durStr doubleValue];
+        }
+        [self launchBenchModeWithURL:benchURL duration:benchDur];
+        return;
+    }
 
     NSString* caPath = [[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"];
     if (caPath == nil) {
@@ -1188,6 +1218,81 @@ static NSString* TTParseFilePath(NSString* query) {
     if (row >= 0) {
         [tableView setNeedsDisplayInRect:[tableView rectOfRow:row]];
     }
+}
+
+#pragma mark - Bench mode (decode-bench-harness)
+
+/* Open a player window pointed directly at the given bench URL,
+   bypassing the YouTube search UI and Bonjour discovery.  A
+   companion audio URL (silent PCM) is derived by swapping
+   '/bench?' -> '/bench-audio?' on the video URL, so the A/V
+   clock keeps advancing at real-time and the decoder's pacing
+   and drop-accounting behave exactly like production.  If
+   `secs > 0` an NSTimer auto-quits after N seconds; otherwise
+   the user closes the window to quit (or the stream ends
+   naturally).  The BENCH: stats line is emitted by
+   TTPlayerWindowController's -stop. */
+- (void)launchBenchModeWithURL:(NSString*)url duration:(double)secs {
+    /* Derive the audio companion URL by swapping '/bench?' for
+       '/bench-audio?' in place.  NSString -stringByReplacingOccurrences...
+       is 10.5+, so use the 10.0-era NSMutableString mutator. */
+    NSMutableString* audioURL = [NSMutableString stringWithString:url];
+    [audioURL replaceOccurrencesOfString:@"/bench?"
+                              withString:@"/bench-audio?"
+                                 options:0
+                                   range:NSMakeRange(0, [audioURL length])];
+    fprintf(stderr, "bench-mode: video=%s\n", [url UTF8String]);
+    fprintf(stderr, "bench-mode: audio=%s duration=%.2f\n",
+            [audioURL UTF8String], secs);
+
+    playerController = [[TTPlayerWindowController alloc]
+        initWithTitle:@"TigerTube bench"
+             videoURL:url
+             audioURL:audioURL
+             duration:0
+                width:640
+               height:480
+                vsync:NO];
+    if (playerController == nil) {
+        fprintf(stderr, "bench-mode: player init failed\n");
+        [NSApp terminate:nil];
+        return;
+    }
+    [playerController setBenchMode:YES];
+    [playerController play];
+
+    /* Terminate the app when the player window is closed (by user, by
+       stream-end, or by the bench-duration timer). */
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(benchWindowWillClose:)
+               name:NSWindowWillCloseNotification
+             object:[playerController window]];
+
+    if (secs > 0) {
+        [NSTimer scheduledTimerWithTimeInterval:secs
+                                         target:self
+                                       selector:@selector(benchDurationFired:)
+                                       userInfo:nil
+                                        repeats:NO];
+    }
+}
+
+- (void)benchDurationFired:(NSTimer*)t {
+    (void)t;
+    fprintf(stderr, "bench-mode: duration timer fired\n");
+    [playerController closePlayer];
+}
+
+- (void)benchWindowWillClose:(NSNotification*)note {
+    (void)note;
+    /* Let the player's -stop path run (it's already in flight from
+       closePlayer / windowWillClose:); then terminate.  A short pump
+       gives the curl threads a window to notice stopRequested and
+       exit cleanly before NSApp terminate: tears the process down. */
+    [[NSRunLoop currentRunLoop]
+        runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
+    [NSApp terminate:nil];
 }
 
 @end
