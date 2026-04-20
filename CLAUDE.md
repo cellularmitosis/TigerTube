@@ -222,6 +222,33 @@ thing in context:
 - Bug postmortems (not feature-paired) can live at `docs/` root or under
   `docs/postmortems/` — not under `docs/features/`.
 
+### Build stashing and end-of-session summary
+
+When implementing features unsupervised (i.e. the user isn't watching
+each step in real time), two conventions make it easy for them to
+review asynchronously:
+
+- **Stash every build.** After producing
+  `~/tmp/TigerTube/build/Debug/TigerTube.app` on a build machine, also
+  copy it to `~/tmp/builds/<feature-slug>/TigerTube.app` on whichever
+  machines are appropriate for review. Use the feature's directory
+  slug under `docs/features/`. E.g. for the triggered-display feature:
+  `~/tmp/builds/triggered-display/TigerTube.app`. The `~/tmp/builds/`
+  directory serves as a per-feature stash that persists across
+  sessions and lets the user flip between different feature branches'
+  binaries without rebuilding.
+- **End-of-session summary.** When stopping work after queued tasks,
+  the last message should include:
+  - What was actually done (which commits, which behaviours).
+  - Which stashed builds are ready for review, with machine paths.
+  - Any assumptions made to proceed unsupervised (especially
+    `[ASSUMPTION]` markers from plans that were resolved in code
+    without explicit confirmation).
+  - What's needed from the user: QA on which machines, which
+    questions need a design call, which open plan questions were
+    punted.
+  - Known issues or rough edges that should block a release.
+
 ## Git workflow
 
 - "Commit this" and "push this up" both mean commit *and* push. Don't
