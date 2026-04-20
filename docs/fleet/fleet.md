@@ -32,17 +32,53 @@ other target via `tiger-rsync.sh`).
   applies uniformly to every Tiger host in this fleet (pmacg3,
   imacg3, ibookg3, ibookg37, emac, imacg52). Same bash-3.2-too-old
   story, same stock `/usr/bin/curl` without modern TLS, same
-  `/opt`-based modern toolchain, same Xcode 2.5 +
-  `MacOSX10.4u.sdk`, same `tiger-rsync.sh`
+  `/opt`-based modern toolchain bootstrapped by `tiger.sh`, same
+  Xcode 2.5 + `MacOSX10.4u.sdk`, same `tiger-rsync.sh`
   `--protocol=27 --no-dirs` gotcha. The skill is named for imacg3
   because that was the primary dev-loop machine; the guidance is
   identical on the other Tiger boxes.
-- **leopard-adc-docs** applies to pbookg42 and mdd (the two
-  Leopard hosts). Leopard hosts typically don't have the
-  `/opt/`-based modern toolchain — confirm before running anything
-  that expects it. Standard rsync usually works on Leopard, but
-  the fleet convention is to use `tiger-rsync.sh` uniformly (it
-  does no harm on Leopard and keeps the deploy script simple).
+- **[leopard-adc-docs](../../.claude/skills/leopard-adc-docs/SKILL.md)**
+  is the Apple API reference (ObjC 1.0, Carbon, Cocoa, QuickTime,
+  Foundation, AppKit, 10.4/10.5 conceptual guides and sample code)
+  — it applies to **any** TigerTube work targeting Tiger *or*
+  Leopard, not just the two Leopard hosts. Reach for it on Cocoa
+  / AppKit / Foundation API questions, availability checks, or
+  when current developer.apple.com has removed a deprecated API.
+- **`tiger-rsync.sh` is safe on Leopard too.** It lives on uranium;
+  its `--protocol=27 --no-dirs` flags are Tiger-specific, but they
+  don't harm Leopard. Use it uniformly for the whole fleet rather
+  than branching on OS.
+
+## The `/opt` modern-toolchain system
+
+Every fleet host (Tiger and Leopard) has a helper script that
+populates `/opt/<pkg>-<version>/` with binaries too new for the
+host's stock OS:
+
+- **Tiger hosts** use `tiger.sh`
+- **Leopard hosts** use `leopard.sh`
+
+Both scripts take the same shape:
+
+```
+tiger.sh             # (or leopard.sh) list available packages
+tiger.sh foo-1.2.3   # install foo version 1.2.3 into /opt/foo-1.2.3
+```
+
+**What's already installed on a given host varies** — it depends
+on whichever project was last explored on that machine. Before
+assuming `bash` 4+, modern `curl` with current TLS, `perl` 5.36,
+a working `gcc` 4.9 / 10.3, etc. are present, either check
+`ls /opt` on the target or just install what you need:
+
+```
+ssh <host> 'tiger.sh curl-8.5.0'        # on a Tiger host
+ssh <host> 'leopard.sh curl-8.5.0'      # on a Leopard host
+```
+
+This is the intended workflow — you're free to install any of
+the available packages on any host at any time. Nothing breaks
+by adding `/opt` entries.
 
 ## Fleet hardware summary
 
