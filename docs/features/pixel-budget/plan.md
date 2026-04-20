@@ -7,13 +7,17 @@
 > throughput, which unlocks the **"Auto" tier** added to the Budget
 > popup in this revision.
 >
-> **Depends on:** this feature is designed to land *after* the
-> display-triggered architecture feature (Q1 transport-bar 1 Hz
-> guard + Q2 triggered display) so that `fps_displayed` reflects
-> source-fps rather than the old 30 Hz polled cap. The auto-calibrate
-> benchmark's measured value therefore corresponds to real playback
-> throughput, not the polled-timer cap that Phase B data was
-> collected under.
+> **Sequencing (not a hard dependency):** intended to land *after*
+> the [triggered-display feature](../triggered-display/plan.md)
+> (Q1 transport-bar guard + Q2 decoder-triggered main-thread
+> display). The calibration itself is unaffected by whether Q2
+> has landed — both Phase B data and the auto-calibrate
+> benchmark use 30 fps source content, which is below the old
+> 30 Hz display-timer cap, so numbers are identical under either
+> architecture. The sequencing is for coherence: we don't want to
+> ship a "measure your machine's Mpx/s" feature while 60 fps
+> YouTube content is still half-framed for architectural reasons
+> unrelated to the measured budget. Q2 lands first, then this.
 
 ## Problem
 

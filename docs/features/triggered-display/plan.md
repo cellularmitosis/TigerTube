@@ -300,21 +300,31 @@ instrumentation cadence for debugging.
   — the `fps_displayed` cap at 30 should be gone; bench should
   now show fps_displayed tracking fps_decoded up to source fps.
 
-### Step 7 — Instrument the bench harness to match
+### Step 7 — Bench-harness validation (not re-bench)
 
-The `BENCH:` line already reports both `fps_decoded` and
-`fps_displayed`. With this change, the `fps_displayed` field
-now tracks source fps rather than capping at ~30. Any existing
-bench logs interpreted under the old cap need re-reading — in
-particular the `sweep-highres-g5-extended.log` which showed the
-G5 decoding 113 Mpx/s @ 60 fps content at 1920×1080 should now
-show that number in `mpxs_displayed` too.
+Almost all existing bench data stands post-Q2:
 
-Rerun `sweep-highres-g5-extended.sh` and optionally
-`sweep-fleet-calibration.sh` (highres extended) to regenerate
-canonical numbers. Worth doing because the pixel-budget
-feature's auto-calibrate will be designed against these
-post-triggered-display numbers.
+- **Phase A sweeps** (all at 30 fps source on imacg3): numbers
+  unchanged. No re-run needed.
+- **Phase B fleet calibration** (all at 30 fps source across
+  nine machines): numbers unchanged. No re-run needed.
+- **Phase B extended high-res sweep** at 30 fps (pbookg42,
+  emac, mdd, imacg52): numbers unchanged. No re-run needed.
+
+The two measurements that **do** change under Q2 are the 60 fps
+source points in `sweep-highres-g5-extended.log`:
+
+- `1280×720@60` previously: `fps_displayed=29, mpxs_displayed=26.8`.
+  Post-Q2: `fps_displayed` should track `fps_decoded` (~58) →
+  `mpxs_displayed` jumps to ~53. That's the validation signal.
+- `1920×1080@60` previously: `fps_displayed=27, mpxs_displayed=56`.
+  Post-Q2: `mpxs_displayed` should climb toward the decoder's
+  measured `mpxs_decoded=113`.
+
+Re-run `sweep-highres-g5-extended.sh` after Q2 lands and append
+the post-Q2 numbers alongside the old ones in the log (or to a
+new `-post-q2.log` file). This confirms Q2 is doing its job. No
+other sweeps need regeneration.
 
 ## Validation
 
