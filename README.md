@@ -3,7 +3,7 @@
 A native Cocoa YouTube client for **Mac OS X 10.4 Tiger on PowerPC**,
 paired with a transcoding proxy that runs on a modern host.
 
-![TigerTube 0.3 screenshot](media/tigertube-0.3.png)
+![TigerTube 0.3 screenshot](media/tigertube-0.3-retrobytes.png)
 
 ## How it works
 
