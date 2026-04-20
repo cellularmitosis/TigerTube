@@ -29,6 +29,105 @@ useful for server-side transcoding and imacg3 benchmarking, but is *not*
 a candidate for client-side decode — far too heavy for the .app bundle.
 
 
+## Why MPEG-1 as the wire codec (vs. more modern codecs)
+
+libmpeg2 picks our *library*; the *codec* choice — why MPEG-1/2 rather
+than MPEG-4 Part 2 (DivX/Xvid), H.264, or H.265 — deserves its own
+rationale because it looks wrong by every standard "pick a codec"
+metric and is right for the specific constraint this project has.
+
+Modern codec development is, at its core, **spending decoder CPU to
+save transmission bandwidth**:
+
+| Codec | Decode CPU cost (relative) | Bitrate at matched quality (relative) |
+|---|---|---|
+| MPEG-1 | 1.0× | 1.0× |
+| MPEG-4 ASP (DivX) | ~1.5–2× | ~0.5× |
+| H.264 baseline | ~3–5× | ~0.25× |
+| H.265 | ~8–12× | ~0.15× |
+
+YouTube ships H.264/VP9/AV1 because its constraint is WAN bandwidth
+(user devices are plentiful, CPU-rich, and battery-constrained
+less than pipe-constrained). Our constraint is the inverse: **the
+CPU is the scarcest resource**, and the pipe to the client is a
+dedicated LAN that nobody else is using.
+
+### Bandwidth is cheap; decode cycles are priceless
+
+Concrete numbers for this project:
+
+- **Link capacity.** Every PowerPC Mac in the TigerTube fleet has at
+  least a 100 Mbit Ethernet NIC. 100 Mbit = 12.5 MB/s.
+- **Worst-case bench bitrate.** The decode-bench-harness exploration
+  showed noise-heavy synthetic content peaks around 20 Mbps after
+  MPEG-1 encoding at `-q:v 1`. That's 20% of a 100 Mbit link.
+- **Realistic content bitrate.** Real YouTube video re-encoded to
+  MPEG-1 at `-q:v 4` settles around 1.5–3 Mbps at 360p. That's
+  <5% of link capacity.
+- **Kernel-side CPU cost of network throughput.** A 400 MHz G3
+  pushing 20 Mbps through the softirq path spends roughly 3–8% CPU
+  on packet handling. On a G5 it's rounding error. On every
+  machine in the fleet, kernel network cost is a small fixed tax.
+
+If we traded MPEG-1 for MPEG-4 ASP, the bitrate at matched quality
+would drop by roughly 2×, saving maybe 2–4% kernel CPU on a slow G3.
+Decoder CPU cost would rise by ~1.5–2×. On a machine where decode
+is *already the bottleneck*, trading 3% kernel savings for 80%
+more decoder work is a net loss every time.
+
+### Self-throttling makes the worst case self-limit
+
+An underappreciated property of the pipeline: when the client is
+at its decode ceiling, it stops consuming from the TCP socket,
+which TCP-backpressures the proxy's ffmpeg, which stalls on its
+output write. The wire-rate pace-matches the decode rate. **A slow
+G3 never sustains 20 Mbps on the wire even if the encoder would
+happily emit 20 Mbps** — the decoder throttles the stream to its
+own speed automatically.
+
+So the high-bitrate corner we'd worry about (kernel-CPU swamping
+decode-CPU) doesn't actually materialize on a slow machine. The
+only machines that can sustain 20 Mbps on the wire are the ones
+where 20 Mbps costs rounding-error CPU.
+
+### MPEG-1's low per-frame cost variance is a feature, not a defect
+
+Every codec after MPEG-1 extracts extra compression with techniques
+that increase per-frame decode cost *variance*:
+
+- **MPEG-4 ASP** adds B-frames and quarter-pixel motion compensation.
+  Per-frame cost swings 2–3× between simple and complex scenes.
+- **H.264** adds CABAC entropy coding (deeply sequential, fights
+  pipelining), 8×8 transforms, more reference frames, adaptive
+  deblocking. Per-frame cost swings 3–5×, with pathological
+  content (high motion + fine detail) costing 5–10× the mean.
+- **H.265** piles on tree-block coding and even more aggressive
+  prediction modes — cost variance is worse still.
+
+For a real-time playback system that drops frames when it can't
+keep up, **predictable per-frame cost is a positive feature**.
+MPEG-1's worst frame costs ~1.3× its average frame; an
+auto-calibrate benchmark measured on a representative clip
+transfers cleanly to other clips because all clips behave
+similarly. A benchmark calibrated on H.264 content is only valid
+for *that content's* motion profile; a different scene could
+cost 5× more and bust the measured budget.
+
+### Where modern codecs *would* win
+
+- **Constrained-bandwidth networks.** WiFi, cellular, WAN, or
+  shared LAN with other heavy users. None of these apply here.
+- **Storage.** Writing an MPEG-1 VOD archive would be wasteful.
+  Our proxy transcodes on demand and keeps nothing, so storage is
+  irrelevant.
+- **Battery life on mobile clients.** We have no battery-powered
+  clients in the fleet's intended-playback mode.
+
+None of those wins apply to TigerTube's deployment model. MPEG-1 is
+the right codec for "dedicated LAN + cheap CPU on the client" — the
+exact corner this project occupies.
+
+
 ## Overall architecture: two raw streams, no container
 
 Every previous transcoding-proxy experiment in `/Users/cell/junk/ppctube`
