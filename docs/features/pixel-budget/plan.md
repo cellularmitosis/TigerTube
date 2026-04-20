@@ -1,9 +1,19 @@
 # Pixel-budget popup (experimental Mpx/s UI)
 
-> **Status: first draft, pending review.** This plan was drafted with
-> assumptions marked **[ASSUMPTION]** to leave placeholders for the
-> user to steer. Assumptions are collected at the bottom for fast
-> review.
+> **Status: revised draft after the [decode-bench-harness study](../decode-bench-harness/postmortem.md)
+> landed.** Several `[ASSUMPTION]` markers from the first draft are
+> now data-answered — the bench study confirmed that a single simple
+> benchmark is sufficient to predict per-machine sustained decode
+> throughput, which unlocks the **"Auto" tier** added to the Budget
+> popup in this revision.
+>
+> **Depends on:** this feature is designed to land *after* the
+> display-triggered architecture feature (Q1 transport-bar 1 Hz
+> guard + Q2 triggered display) so that `fps_displayed` reflects
+> source-fps rather than the old 30 Hz polled cap. The auto-calibrate
+> benchmark's measured value therefore corresponds to real playback
+> throughput, not the polled-timer cap that Phase B data was
+> collected under.
 
 ## Problem
 
@@ -36,19 +46,39 @@ and framerate.
 A second `NSPopUpButton` in the controls row with items:
 
 - `Off` (default; use the Resolution popup as-is)
+- `Auto (N.N Mpx/s)` — uses the value measured by first-launch
+  calibration (see "Auto-calibrate" below). The displayed N.N
+  is the value, so the user sees what their machine measured.
 - `1 Mpx/s` — very conservative, safe on any source
 - `2 Mpx/s` — roughly today's 320×240@24 default
 - `4 Mpx/s` — roughly today's 480×360@24
 - `8 Mpx/s` — roughly today's 640×480@24
 - `16 Mpx/s` — G5 territory; G3 will struggle
+- `32 Mpx/s` — G5 ~1080p @ 30 fps; only useful on G5
 
 When set to anything other than `Off`, the client:
 
 1. **Disables the Resolution popup** (setEnabled:NO) so it's visible
    that Budget is the active knob.
 2. Omits `w=` and `h=` from the video URL.
-3. Includes `&mpxs=<N>` where `<N>` is the numeric prefix from the
-   popup title (e.g., `2`).
+3. Includes `&mpxs=<N>` where `<N>` is the numeric value (e.g.,
+   `2` for the `2 Mpx/s` tier, or the calibrated value for
+   `Auto`).
+
+Fleet ceilings (measured in the decode-bench study) grid neatly
+onto these tiers:
+
+| Machine | Measured ceiling | Natural manual tier | Auto would show |
+|---|---|---|---|
+| G3 imacg3 (600 MHz) | ~3.5 | `2 Mpx/s` | ~3.0 |
+| G3 ibookg3/37 (900 MHz) | ~5.2 | `4 Mpx/s` | ~4.4 |
+| G4 pbookg42 (1.25 GHz) | ~34 | `16 Mpx/s` | ~29 |
+| G4 emac (1.42 GHz) | ~31 | `16 Mpx/s` | ~26 |
+| G4 mdd dual | ~20 | `16 Mpx/s` | ~17 |
+| G5 imacg52 (2 GHz) | ~63 | `32 Mpx/s` | ~53 |
+
+All Auto figures assume a safety factor of 0.85 on the raw
+measurement (see below).
 
 ### Proxy: derive W×H from budget + source aspect + fps
 
@@ -70,6 +100,92 @@ When `mpxs` is present, the proxy:
 Then uses `target_w` / `target_h` as the `w` / `h` for the existing
 `scale=w:h:force_original_aspect_ratio=decrease` filter chain. No
 other filter changes.
+
+### Auto-calibrate: `measuredMpxs` on first launch
+
+The `Auto` tier reads a one-shot benchmark value that the app
+measures on its first launch and persists forever. The
+[decode-bench-harness postmortem](../decode-bench-harness/postmortem.md)
+establishes that a single simple benchmark generalises within
+~15% to real content (H1 confirmed; H2/H3 rejected), and that no
+static lookup table predicts per-machine throughput reliably
+(H4 rejected for G3).
+
+**Key used:** `NSUserDefaults` key `"measuredMpxs"` (NSNumber /
+double). Absent on first launch; populated after calibration.
+
+**Trigger:** in `-[AppController applicationDidFinishLaunching:]`,
+after `buildWindow` returns and **after the first proxy has been
+resolved over Bonjour**. If `measuredMpxs` is absent from
+defaults and a proxy is reachable, run calibration silently. The
+proxy dependency means calibration waits for discovery; if
+Bonjour takes a while, calibration just fires once the proxy
+lands.
+
+**Calibration flow** (all internal; the user sees a brief
+"Calibrating…" string in the main window status area, or
+similar):
+
+1. Build a fixed bench URL against the resolved proxy:
+   `http://<proxy>:<port>/bench?source=testsrc2&w=480&h=360&fps=30&dur=5&rc=q&qv=4`.
+   Plus the companion `/bench-audio` URL so the A/V clock
+   advances normally.
+2. Construct a hidden (or off-screen, or transparent) player
+   window via `TTPlayerWindowController` with `setBenchMode:YES`.
+   Reuses the exact `--bench-url` code path already landed from
+   the decode-bench-harness feature.
+3. Let it run for its 5-second duration. The existing bench
+   stats mechanism emits a `BENCH:` line on stop.
+4. Parse `fps_displayed` from the stats, compute `raw_mpxs =
+   W × H × fps_displayed`, multiply by a **safety factor**
+   `TT_AUTOCAL_SAFETY = 0.85` to account for real-content
+   overhead (Phase A showed content/bitrate move the ceiling by
+   <15%; 0.85 stays on the safe side).
+5. Persist: `[[NSUserDefaults standardUserDefaults]
+   setDouble:measured forKey:@"measuredMpxs"]`.
+6. Log a single diagnostic line to stderr:
+   `auto-calibrate: measured=X.XX Mpx/s (saved)`.
+
+**Benchmark geometry choice.** 480×360@30 = 5.3 Mpx/s source
+rate. Hand-chosen so:
+- It's over-ceiling for the slowest Tiger G3 in the fleet
+  (imacg3 hits ~3.5 Mpx/s), so the measurement reflects real
+  saturation, not display-timer headroom.
+- It's under the decode-bench-harness *decode-only* ceiling of
+  every machine (G4+ can decode 60+ Mpx/s), but with the
+  post-Q2 triggered-display architecture that doesn't matter —
+  fps_displayed will match fps_decoded, so even G5s will
+  reflect real sustained throughput at 5.3 Mpx/s (which is way
+  below their ceiling).
+- **Consequence for G4/G5**: their measured Mpx/s is just 5.3
+  (the source rate, because nothing drops), so their Auto tier
+  reads `Auto (4.5 Mpx/s)` after the 0.85 safety factor. That
+  drastically under-reports their real ceiling. This is
+  acceptable for `Auto` — the user can manually bump to `16` or
+  `32` if they want more. Auto-is-conservative by design.
+
+An alternative is to pick a stepped sequence of geometries and
+find where drops start (an in-app version of `sweep-geometry.sh`).
+Rejected for first cut: adds ~25 seconds to first launch for
+minimal user-visible benefit over the single-shot approach.
+Could be added as a "Thorough calibration" hidden menu item
+later.
+
+**Recalibrate:** a hidden menu item (`Window ▸ Recalibrate Pixel
+Budget`, or a debug-only command) that deletes `measuredMpxs`
+and triggers another calibration on next launch. Not exposed
+prominently — per the [no-thermal-throttle memory](../../../.claude/…),
+PowerPC perf is constant and the measurement holds forever once
+taken.
+
+**Failure modes:**
+- No proxy resolved within N seconds of launch: skip
+  calibration, leave `measuredMpxs` unset. `Auto` tier hides
+  itself from the popup if `measuredMpxs` is absent.
+- Bench stream errors: same — leave unset, `Auto` hides.
+- Partial drops during calibration (we're over ceiling, as
+  expected): use `fps_displayed` directly, no drops-based
+  correction needed.
 
 ## Design decisions (and rationale)
 
@@ -104,22 +220,31 @@ Alternatives considered:
   proxy knob) or framerate (the Framerate popup).
 - `Pixels/s:` — verbose and would force a narrower popup.
 
-### Why these six values (Off / 1 / 2 / 4 / 8 / 16)
+### Why these seven values (Off / Auto / 1 / 2 / 4 / 8 / 16 / 32)
 
-Powers of 2, spanning the G3's actual operating range:
+Powers of 2 spanning the fleet's measured operating range (see
+[postmortem.md](../decode-bench-harness/postmortem.md) "Per-machine
+ceiling" table):
 
-- **1 Mpx/s**: ~240×180@24 fps. Well under the G3's ceiling; useful
-  for 60 fps Shorts that would otherwise bust the budget.
-- **2 Mpx/s**: ~320×240@24 fps. Matches today's default.
-- **4 Mpx/s**: ~480×360@24 fps. Near the G3's sustainable upper
-  bound with AltiVec absent.
-- **8 Mpx/s**: ~640×480@24 fps. Strains the G3; comfortable on G5.
-- **16 Mpx/s**: ~960×720@24 fps. G5 territory only; included for
-  completeness on the G5 iMac.
+- **1 Mpx/s**: ~240×180@24 fps. Well under the G3's ceiling;
+  useful for 60 fps Shorts that would otherwise bust the budget.
+- **2 Mpx/s**: ~320×240@24 fps. Matches today's default; sits
+  under the weakest G3's ~3.5 ceiling.
+- **4 Mpx/s**: ~480×360@24 fps. 900 MHz G3's sweet spot; over
+  ceiling on 400/500/600 MHz G3s.
+- **8 Mpx/s**: ~640×480@24 fps. Over-ceiling for every G3;
+  trivial on G4/G5.
+- **16 Mpx/s**: ~960×720@24 fps. G4-single-core's natural tier
+  (measured ceilings 20–34).
+- **32 Mpx/s**: ~1280×720@30 fps. G5 territory — bench study
+  measured ~63 Mpx/s playback ceiling on imacg52, so 32 leaves
+  ~2× headroom.
+- **Auto**: the machine-specific calibrated value. User's default
+  answer if they don't know what to pick.
 
-Denser steps (1.5, 3, 6) aren't useful without finer-grained
-feedback — we're already making a rough heuristic call. The
-popup stays short.
+Denser steps (1.5, 3, 6) aren't useful — we're already making a
+rough heuristic call, and Auto fills the gap between tiers with
+a per-machine value.
 
 ### Why the proxy picks the resolution, not the client
 
@@ -352,31 +477,44 @@ Same branch for `kind=file`.
 
 ## Validation
 
-Manual, on imacg3 and imacg52. `Off` path should be byte-identical
+Manual, across the fleet. `Off` path should be byte-identical
 to today's (validates no regression).
 
 1. **Default path (Off).** Default popup = `Off`. Every existing
    validation from the aspect-scale-and-crop plan should still pass
    unchanged.
-2. **Budget=2 on a 4:3 / 24 fps source.** Expect proxy to derive
+2. **Auto on first launch.** Fresh `NSUserDefaults`; TigerTube
+   starts, resolves proxy via Bonjour, runs the silent
+   calibration, logs `auto-calibrate: measured=X.XX Mpx/s`,
+   persists to defaults. Relaunch: no re-calibration.
+3. **Auto tier title.** Budget popup's `Auto (N.N Mpx/s)` title
+   reflects the persisted value.
+4. **Auto tier behaves like a numeric tier.** Selecting Auto
+   sends `&mpxs=N.N` (or the nearest round number per proxy
+   params parser — see P1 below), plays identically.
+5. **Budget=2 on a 4:3 / 24 fps source.** Expect proxy to derive
    `(320, 240)` (or close). Resolution popup is disabled.
-3. **Budget=2 on a 16:9 / 24 fps source.** Expect `(368, 208)` or
+6. **Budget=2 on a 16:9 / 24 fps source.** Expect `(368, 208)` or
    similar (2 Mpx/s at 16:9 @ 24 fps). Player window opens at the
    computed size.
-4. **Budget=2 with fps=Source on a 60 fps source.** Proxy reads
+7. **Budget=2 with fps=Source on a 60 fps source.** Proxy reads
    source fps from yt-dlp, derives a smaller `(W, H)` to fit the
    60 fps budget. Should be ~ `(240, 144)` or similar.
-5. **Budget=1 with an extreme source.** 9:16 Shorts, 60 fps.
+8. **Budget=1 with an extreme source.** 9:16 Shorts, 60 fps.
    Budget math would want tiny dimensions; clamp-to-144 kicks in,
    resulting output is `(~80, 144)`.
-6. **File-source with Budget.** Requires ffprobe; verify proxy
+9. **File-source with Budget.** Requires ffprobe; verify proxy
    logs the `(aspect, fps)` it read.
-7. **Switching between Off and a Budget.** Resolution popup
-   enables/disables correctly. Mid-session switch works (each
-   play is independent).
-8. **Out-of-band curl test.** `curl '…/v/yt/<id>?mpxs=2&q=2&g=12'`
-   (no `w`, no `h`, no `fps`). Should 200 and stream at the
-   server-computed dims.
+10. **Switching between Off and a Budget.** Resolution popup
+    enables/disables correctly. Mid-session switch works (each
+    play is independent).
+11. **Out-of-band curl test.** `curl '…/v/yt/<id>?mpxs=2&q=2&g=12'`
+    (no `w`, no `h`, no `fps`). Should 200 and stream at the
+    server-computed dims.
+12. **Fleet cross-check.** Run the feature on at least one G3
+    (imacg3 or ibookg3), one G4 (emac or pbookg42), and the G5
+    (imacg52). Verify Auto reports a value consistent with the
+    postmortem's per-machine ceiling (within ~20%).
 
 ## What's explicitly NOT in this feature
 
@@ -387,7 +525,13 @@ to today's (validates no regression).
   logs it; the user can check the log or just observe the player
   window size.
 - No budget mode for audio. Audio bitrate is unchanged.
-- No saving of the Budget selection across sessions.
+- No saving of the Budget selection across sessions (separate
+  from the auto-calibrated value, which *is* persisted). The
+  popup resets to `Off` on relaunch.
+- No ceiling-finding auto-calibration (walking geometries until
+  drops start). Single-shot at fixed 480×360@30 is the first-
+  cut answer; a "Thorough calibration" hidden item can add it
+  later if Auto's under-reporting on G4/G5 proves annoying.
 
 ## Open questions / assumptions to confirm
 
@@ -395,51 +539,73 @@ to today's (validates no regression).
 
 - **A1. Popup placement.** Assumed: at the right end of the row
   after Crop. Alternative: between Framerate and VSync. Which?
+  **Still open** — no bench data bears on this.
 - **A2. Label text.** Assumed: `Budget:`. Alternative: `Mpx/s:`,
-  `Rate:`, `Pixel rate:`.
-- **A3. Tier values.** Assumed: Off / 1 / 2 / 4 / 8 / 16. Any
-  different granularity? Include 0.5 or 32?
+  `Rate:`, `Pixel rate:`. **Still open.**
+- **A3. Tier values.** **Resolved.** Fleet ceilings (3.5 → 63
+  Mpx/s) map cleanly onto `1 / 2 / 4 / 8 / 16 / 32`. `32` added
+  for G5 headroom; plus an `Auto` tier that shows the
+  calibrated value.
 - **A4. Resolution popup when Budget is active.** Assumed:
-  disabled. Alternative: left enabled but ignored.
+  disabled. Alternative: left enabled but ignored. **Still
+  open** but leaning "disabled" for UI clarity.
 - **A5. Budget replaces Resolution?** Assumed: stays as a second
-  popup. Alternative: swap Resolution items to Budget items (one
-  popup, destructive change).
+  popup. **Still open**, but the experimental-UI framing (default
+  Off) argues for additive.
 - **A6. minWidth bump to 1070.** On a 1024-wide iMac G3 this means
   the drops label clips at minWidth. Acceptable, or should we cut
-  something else to stay under 1024?
+  something else to stay under 1024? **Still open.**
 
 ### Derivation logic
 
 - **B1. Round to multiples of 16?** Assumed yes for MPEG-1
   efficiency. Multiples of 8 or no rounding also work.
+  **Still open**, leaning 16.
 - **B2. Floor of 144p.** Assumed. Alternative: no floor (let tiny
-  dims happen), or a different floor like 192p.
+  dims happen), or a different floor like 192p. **Still open.**
 - **B3. Fallback aspect/fps when lookup fails.** Assumed
   `(16/9, 24)`. Might prefer `(4/3, 24)` if most legacy content is
-  4:3, or abort with 500.
+  4:3, or abort with 500. **Still open.**
 - **B4. Budget interpretation when Resolution knob "bounds" conflict.**
   With Resolution disabled, this is moot. But if the user prefers
   A4 = "enabled but ignored", we should document whether the
-  Resolution value is used as an additional upper bound (e.g., never
-  let Budget-derived dims exceed the Resolution cap). Adds
-  complexity; default assumption is "no."
+  Resolution value is used as an additional upper bound. **Still
+  open**, default "no extra bound."
 
 ### Operational
 
 - **C1. Where does the ffprobe cache live?** Assumed: extend the
-  one that `resolve_crop` already uses. If that doesn't currently
-  cache aspect/fps, we'll need to expand what it stores. The
-  alternative is a second cache keyed the same way — slight
-  duplication.
-- **C2. yt-dlp format selection.** The proxy currently picks a
-  format given `src_h`. For Budget mode we don't have `src_h` at
-  lookup time (we're trying to compute it). Options:
-  (a) Use a default `src_h` (e.g., 720) for the aspect/fps lookup,
-      then re-pick after computing target h.
-  (b) yt-dlp's `info` dict has all formats; read aspect/fps off
-      any one (they're consistent per video).
-  Option (b) is cleaner; assumed.
+  one that `resolve_crop` already uses. **Still open.**
+- **C2. yt-dlp format selection.** yt-dlp's `info` dict has all
+  formats; read aspect/fps off any one. **Still open**, leaning
+  option (b).
 - **C3. Exposing the derived W×H to the client.** Assumed
-  proxy-log-only. A `?debug=1` response header or a tiny
-  `GET /budget-preview` endpoint could echo the derivation for
-  client UI. Follow-up, not in this feature.
+  proxy-log-only. **Still open**; the client's `Auto` popup
+  title-refresh doesn't need it (Auto's label is the persisted
+  measured Mpx/s, not the per-stream derived W×H), so this stays
+  a follow-up.
+
+### Auto-calibrate
+
+- **D1. Safety factor.** Assumed `0.85` (Phase A showed content /
+  bitrate move the ceiling by <15%, so a 15% buffer undercuts
+  real-content performance). Alternative: `1.0` (trust the
+  measurement literally), `0.80` (more conservative). **Still
+  open**, leaning 0.85.
+- **D2. Benchmark geometry.** Assumed `testsrc2 @ 480×360 @ 30`.
+  Intentionally over-ceiling for the weakest G3s, under-ceiling
+  for G4/G5 — so G4/G5 Auto values under-report. User can
+  manually pick a higher tier on those machines. **Still open**;
+  an adaptive sweep is the alternative.
+- **D3. When Auto hides.** If `measuredMpxs` is absent from
+  `NSUserDefaults` (calibration didn't complete — no proxy, first
+  launch in progress, error during the bench run), the `Auto`
+  tier should not appear in the popup at all. Alternative: show
+  disabled with a "(not calibrated)" suffix. **Still open**,
+  leaning hide.
+- **D4. Proxy-change re-calibration.** If the user's proxy
+  changes between sessions (Bonjour resolves a different host),
+  should we re-run calibration? A bench run is proxy-specific
+  only in that it spawns ffmpeg on whatever proxy serves it, but
+  decode cost is client-side and shouldn't care. Leaning "no
+  re-cal needed." **Still open.**
